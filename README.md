@@ -30,6 +30,7 @@ fxxks extract <file> --model-payload
 fxxks decide <file>
 fxxks codex-pre-read <file>
 fxxks codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop>
+fxxks codex-runtime-hook --native-hook
 fxxks attach codex
 fxxks attach claude
 ```
@@ -126,6 +127,7 @@ The v1 bridge is intentionally narrow:
 - repeated same-file work in one session
 - quiet by default
 - full-read escape hatch via `#fxxks-full-read` or `#fxxks-disable-pre-read`
+- only active inside repos that already ran `fxxks attach codex`
 
 Example debug flow:
 
@@ -142,6 +144,54 @@ Expected behavior:
 - override markers force immediate full-read fallback
 
 This is a **prompt/session bridge**, not a claim that Codex already exposes a universal low-level file-read hook.
+
+For Codex native hook wiring, the repo-side bridge can also read the hook payload from stdin:
+
+```bash
+fxxks codex-runtime-hook --native-hook
+```
+
+Recommended `~/.codex/hooks.json` addition:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "fxxks codex-runtime-hook --native-hook"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "fxxks codex-runtime-hook --native-hook"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "fxxks codex-runtime-hook --native-hook"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+When the current cwd is not a Codex-attached `fxxks` project, the native hook bridge exits quietly without output.
 
 ## Cache validation
 

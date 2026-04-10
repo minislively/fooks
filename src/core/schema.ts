@@ -148,6 +148,13 @@ export type CodexRuntimeHookDecision = {
   };
 };
 
+export type CodexNativeHookOutput = {
+  hookSpecificOutput: {
+    hookEventName: CodexRuntimeHookEvent;
+    additionalContext: string;
+  };
+};
+
 export type IndexEntry = {
   filePath: string;
   fileHash: string;

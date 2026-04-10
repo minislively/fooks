@@ -18,7 +18,7 @@ export function attachCodex(sampleFile: string, cwd = process.cwd()): AttachResu
       : (() => {
           const manifestPath = installRuntimeManifest("codex", cwd, {
             runtimeBridge: {
-              command: "fxxks codex-runtime-hook",
+              command: "fxxks codex-runtime-hook --native-hook",
               supportedHookEvents: ["SessionStart", "UserPromptSubmit", "Stop"],
               scope: {
                 extensions: [".tsx", ".jsx"],

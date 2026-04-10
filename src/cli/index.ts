@@ -11,6 +11,7 @@ import { attachCodex } from "../adapters/codex";
 import { attachClaude } from "../adapters/claude";
 import { decideCodexPreRead } from "../adapters/codex-pre-read";
 import { handleCodexRuntimeHook } from "../adapters/codex-runtime-hook";
+import { handleCodexNativeHookPayload } from "../adapters/codex-native-hook";
 import type { ExtractionResult } from "../core/schema";
 
 function print(value: unknown): void {
@@ -64,12 +65,14 @@ function parseExtractArgs(args: string[]): { filePath: string; modelPayload: boo
 }
 
 function parseCodexRuntimeHookArgs(args: string[]): {
+  nativeHook: boolean;
   event: "SessionStart" | "UserPromptSubmit" | "Stop";
   prompt?: string;
   sessionId?: string;
   threadId?: string;
   turnId?: string;
 } {
+  let nativeHook = false;
   let event: "SessionStart" | "UserPromptSubmit" | "Stop" | undefined;
   let prompt: string | undefined;
   let sessionId: string | undefined;
@@ -80,6 +83,9 @@ function parseCodexRuntimeHookArgs(args: string[]): {
     const arg = args[index];
     switch (arg) {
       case "--json":
+        break;
+      case "--native-hook":
+        nativeHook = true;
         break;
       case "--event":
         event = args[index + 1] as typeof event;
@@ -106,14 +112,27 @@ function parseCodexRuntimeHookArgs(args: string[]): {
     }
   }
 
+  if (nativeHook) {
+    return { nativeHook, event: "SessionStart", prompt, sessionId, threadId, turnId };
+  }
+
   if (event !== "SessionStart" && event !== "UserPromptSubmit" && event !== "Stop") {
     throw new Error("codex-runtime-hook requires --event <SessionStart|UserPromptSubmit|Stop>");
   }
 
-  return { event, prompt, sessionId, threadId, turnId };
+  return { nativeHook, event, prompt, sessionId, threadId, turnId };
 }
 
-function run(): void {
+async function readStdinJson(): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+  }
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+}
+
+async function run(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   const [arg1] = rest;
   const cliName = path.basename(process.argv[1] ?? "fxxks");
@@ -175,6 +194,14 @@ function run(): void {
     }
     case "codex-runtime-hook": {
       const options = parseCodexRuntimeHookArgs(rest);
+      if (options.nativeHook) {
+        const payload = await readStdinJson();
+        const output = handleCodexNativeHookPayload(payload, process.cwd());
+        if (output) {
+          print(output);
+        }
+        return;
+      }
       print(
         handleCodexRuntimeHook(
           {
@@ -195,8 +222,9 @@ function run(): void {
       console.error(`       ${cliName} extract <file> [--model-payload] [--json]`);
       console.error(`       ${cliName} codex-pre-read <file> [--json]`);
       console.error(`       ${cliName} codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop> [--session-id <id>] [--prompt <text>] [--json]`);
+      console.error(`       ${cliName} codex-runtime-hook --native-hook`);
       process.exitCode = 1;
   }
 }
 
-run();
+void run();

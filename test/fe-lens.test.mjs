@@ -21,6 +21,7 @@ const {
   codexRuntimeSessionPath,
 } = require(path.join(repoRoot, "dist", "adapters", "codex-runtime-session.js"));
 const { handleCodexRuntimeHook } = require(path.join(repoRoot, "dist", "adapters", "codex-runtime-hook.js"));
+const { handleCodexNativeHookPayload } = require(path.join(repoRoot, "dist", "adapters", "codex-native-hook.js"));
 
 function run(args, cwd = repoRoot, envOverrides = {}) {
   return JSON.parse(execFileSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...envOverrides } }));
@@ -28,6 +29,15 @@ function run(args, cwd = repoRoot, envOverrides = {}) {
 
 function runText(args, cwd = repoRoot, envOverrides = {}) {
   return execFileSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...envOverrides } });
+}
+
+function runTextWithInput(args, input, cwd = repoRoot, envOverrides = {}) {
+  return execFileSync(process.execPath, [cli, ...args], {
+    cwd,
+    encoding: "utf8",
+    input,
+    env: { ...process.env, ...envOverrides },
+  });
 }
 
 function makeTempProject(repositoryUrl = "https://github.com/minislively/temp-project.git") {
@@ -431,6 +441,106 @@ test("cli codex-runtime-hook reuses runtime decision logic and advertises the co
   assert.match(usage, /codex-runtime-hook/);
 });
 
+test("native hook bridge only activates inside attached codex projects", () => {
+  const tempDir = makeTempProject();
+  const detachedOutput = handleCodexNativeHookPayload(
+    {
+      hook_event_name: "UserPromptSubmit",
+      cwd: tempDir,
+      prompt: "Please update src/components/FormSection.tsx",
+      session_id: `native-detached-${Date.now()}`,
+    },
+    tempDir,
+  );
+  assert.equal(detachedOutput, null);
+
+  const attachedDir = makeTempProject();
+  run(["attach", "codex"], attachedDir, { FE_LENS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-")) });
+
+  const sessionId = `native-attached-${Date.now()}`;
+  const first = handleCodexNativeHookPayload(
+    {
+      hook_event_name: "UserPromptSubmit",
+      cwd: attachedDir,
+      prompt: "Please update src/components/FormSection.tsx",
+      session_id: sessionId,
+    },
+    attachedDir,
+  );
+  assert.equal(first, null);
+
+  const second = handleCodexNativeHookPayload(
+    {
+      hook_event_name: "UserPromptSubmit",
+      cwd: attachedDir,
+      prompt: "Again, update src/components/FormSection.tsx",
+      session_id: sessionId,
+    },
+    attachedDir,
+  );
+  assert.equal(second.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+  assert.match(second.hookSpecificOutput.additionalContext, /fxxks pre-read reused/);
+});
+
+test("native hook bridge emits full-read guidance for repeated fallback cases", () => {
+  const attachedDir = makeTempProject();
+  run(["attach", "codex"], attachedDir, { FE_LENS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-")) });
+
+  const sessionId = `native-fallback-${Date.now()}`;
+  handleCodexNativeHookPayload(
+    {
+      hook_event_name: "UserPromptSubmit",
+      cwd: attachedDir,
+      prompt: "Please inspect src/components/SimpleButton.tsx",
+      session_id: sessionId,
+    },
+    attachedDir,
+  );
+  const fallback = handleCodexNativeHookPayload(
+    {
+      hook_event_name: "UserPromptSubmit",
+      cwd: attachedDir,
+      prompt: "Again, inspect src/components/SimpleButton.tsx",
+      session_id: sessionId,
+    },
+    attachedDir,
+  );
+  assert.equal(fallback.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+  assert.match(fallback.hookSpecificOutput.additionalContext, /Read the full source file/);
+  assert.match(fallback.hookSpecificOutput.additionalContext, /raw-mode/);
+});
+
+test("cli codex-runtime-hook can read native hook payloads from stdin", () => {
+  const attachedDir = makeTempProject();
+  run(["attach", "codex"], attachedDir, { FE_LENS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-")) });
+
+  const sessionId = `cli-native-${Date.now()}`;
+  runTextWithInput(
+    ["codex-runtime-hook", "--native-hook"],
+    JSON.stringify({
+      hook_event_name: "UserPromptSubmit",
+      cwd: attachedDir,
+      prompt: "Please update src/components/FormSection.tsx",
+      session_id: sessionId,
+    }),
+    attachedDir,
+  );
+  const cliSecond = JSON.parse(
+    runTextWithInput(
+      ["codex-runtime-hook", "--native-hook"],
+      JSON.stringify({
+        hook_event_name: "UserPromptSubmit",
+        cwd: attachedDir,
+        prompt: "Again, update src/components/FormSection.tsx",
+        session_id: sessionId,
+      }),
+      attachedDir,
+    ),
+  );
+  assert.equal(cliSecond.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+  assert.match(cliSecond.hookSpecificOutput.additionalContext, /fxxks pre-read reused/);
+});
+
 test("scan indexes component and qualifying linked ts but excludes generic utils", () => {
   const tempDir = makeTempProject();
   const result = run(["scan"], tempDir);
@@ -510,7 +620,7 @@ test("attach codex proves contract and runtime under minislively account context
   assert.ok(result.runtimeProof.details.some((item) => item.includes("account-source=")));
   assert.ok(fs.existsSync(runtimeManifestPath(result)));
   const runtimeManifest = JSON.parse(fs.readFileSync(runtimeManifestPath(result), "utf8"));
-  assert.equal(runtimeManifest.runtimeBridge.command, "fxxks codex-runtime-hook");
+  assert.equal(runtimeManifest.runtimeBridge.command, "fxxks codex-runtime-hook --native-hook");
   assert.deepEqual(runtimeManifest.runtimeBridge.supportedHookEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
   assert.ok(runtimeManifest.runtimeBridge.escapeHatches.includes("#fxxks-full-read"));
 });
