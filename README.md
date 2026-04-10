@@ -105,6 +105,18 @@ The benchmark reports:
 - refreshed vs reused cache entries
 - cache hit ratio
 
+## Real repo testing
+
+After fixture-level verification, validate against an actual React/TSX
+repo using:
+
+- cold/warm/partial scan behavior
+- representative `decide` checks
+- canonical `extract` vs `extract --model-payload`
+- one real edit task against compressed/hybrid outputs
+
+See `docs/real-repo-validation.md`.
+
 ## Notes
 
 - Core logic stays adapter-agnostic.
