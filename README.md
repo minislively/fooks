@@ -1,8 +1,7 @@
 # fxxks
 
-Repository name: `fxxks`  
-Primary CLI command: `fxxks`  
-Phase 1 engine codename / compatibility alias: `fe-lens`
+Product / repo / package / primary CLI name: `fxxks`  
+Legacy Phase 1 alias: `fe-lens`
 
 Local frontend-only context compression engine for React/TSX files.
 
@@ -32,7 +31,7 @@ fxxks attach codex
 fxxks attach claude
 ```
 
-Legacy PHASE 1 docs may still refer to `fe-lens`; both command names resolve to the same CLI.
+Early Phase 1 drafts may still refer to `fe-lens`. The shipping product name is `fxxks`, while `fe-lens` remains as a compatibility CLI alias and for existing internal path/env contracts.
 
 ## Account context
 
