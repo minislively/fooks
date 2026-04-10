@@ -28,6 +28,7 @@ fxxks scan
 fxxks extract <file> --json
 fxxks extract <file> --model-payload
 fxxks decide <file>
+fxxks codex-pre-read <file>
 fxxks attach codex
 fxxks attach claude
 ```
@@ -87,6 +88,28 @@ The model-facing payload:
 - keeps `contract`, `behavior`, `structure`, minimal `style`
 - keeps `snippets` for hybrid outputs
 - drops engine metadata such as `fileHash` and `meta.generatedAt`
+
+## Codex pre-read decision seam
+
+The first Codex-specific pre-read seam is exposed as a debug surface:
+
+```bash
+fxxks codex-pre-read fixtures/compressed/FormSection.tsx
+```
+
+It is intentionally narrow in v1:
+
+- `.tsx/.jsx` only
+- payload-first, never payload-only
+- falls back to `full-read` for:
+  - `raw-mode`
+  - `missing-contract`
+  - `missing-behavior`
+  - `missing-structure`
+  - `missing-hybrid-snippets`
+  - `ineligible-extension`
+
+This command proves the decision/debug seam that a future automatic Codex hook can reuse. It is **not** the full runtime-wide interception layer yet.
 
 ## Cache validation
 

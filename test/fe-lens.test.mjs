@@ -11,9 +11,15 @@ const cli = path.join(repoRoot, "dist", "cli", "index.js");
 const require = createRequire(import.meta.url);
 const { extractFile } = require(path.join(repoRoot, "dist", "core", "extract.js"));
 const { toModelFacingPayload } = require(path.join(repoRoot, "dist", "core", "payload", "model-facing.js"));
+const { assessPayloadReadiness } = require(path.join(repoRoot, "dist", "core", "payload", "readiness.js"));
+const { decideCodexPreRead } = require(path.join(repoRoot, "dist", "adapters", "codex-pre-read.js"));
 
 function run(args, cwd = repoRoot, envOverrides = {}) {
   return JSON.parse(execFileSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...envOverrides } }));
+}
+
+function runText(args, cwd = repoRoot, envOverrides = {}) {
+  return execFileSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...envOverrides } });
 }
 
 function makeTempProject(repositoryUrl = "https://github.com/minislively/temp-project.git") {
@@ -127,6 +133,89 @@ test("model-facing payload keeps hybrid snippets and prunes unknown style noise"
   assert.equal("meta" in payload, false);
   assert.ok(payload.behavior.eventHandlers.includes("handleAcknowledge"));
   assert.ok(payload.structure.conditionalRenders.length >= 1);
+});
+
+test("readiness helper uses stable reasons and ignores debug metadata", () => {
+  const compressed = extractFile(path.join(repoRoot, "fixtures", "compressed", "FormSection.tsx"));
+  const compressedPayload = toModelFacingPayload(compressed, repoRoot);
+  const compressedReadiness = assessPayloadReadiness(compressed, compressedPayload);
+  assert.equal(compressedReadiness.ready, true);
+  assert.deepEqual(compressedReadiness.reasons, []);
+
+  const raw = extractFile(path.join(repoRoot, "fixtures", "raw", "SimpleButton.tsx"));
+  const rawPayload = toModelFacingPayload(raw, repoRoot);
+  const rawReadiness = assessPayloadReadiness(raw, rawPayload);
+  assert.equal(rawReadiness.ready, false);
+  assert.ok(rawReadiness.reasons.includes("raw-mode"));
+
+  const missingContract = assessPayloadReadiness(compressed, { ...compressedPayload, contract: undefined });
+  assert.ok(missingContract.reasons.includes("missing-contract"));
+
+  const missingBehavior = assessPayloadReadiness(compressed, { ...compressedPayload, behavior: undefined });
+  assert.ok(missingBehavior.reasons.includes("missing-behavior"));
+
+  const missingStructure = assessPayloadReadiness(compressed, { ...compressedPayload, structure: undefined });
+  assert.ok(missingStructure.reasons.includes("missing-structure"));
+
+  const hybrid = extractFile(path.join(repoRoot, "fixtures", "hybrid", "DashboardPanel.tsx"));
+  const hybridPayload = toModelFacingPayload(hybrid, repoRoot);
+  const missingSnippets = assessPayloadReadiness(hybrid, { ...hybridPayload, snippets: undefined });
+  assert.ok(missingSnippets.reasons.includes("missing-hybrid-snippets"));
+
+  assert.equal(compressedReadiness.signals.usedComplexityScore, false);
+  assert.equal(compressedReadiness.signals.usedDecideReason, false);
+});
+
+test("codex pre-read chooses payload for eligible tsx/jsx and fallback otherwise", () => {
+  const compressed = decideCodexPreRead(path.join(repoRoot, "fixtures", "compressed", "FormSection.tsx"), repoRoot);
+  assert.equal(compressed.eligible, true);
+  assert.equal(compressed.decision, "payload");
+  assert.equal(compressed.filePath, path.join("fixtures", "compressed", "FormSection.tsx"));
+  assert.ok(compressed.payload);
+
+  const hybrid = decideCodexPreRead(path.join(repoRoot, "fixtures", "hybrid", "DashboardPanel.tsx"), repoRoot);
+  assert.equal(hybrid.decision, "payload");
+  assert.ok(hybrid.payload.snippets?.length);
+
+  const jsx = decideCodexPreRead(path.join(repoRoot, "fixtures", "jsx", "SimpleWidget.jsx"), repoRoot);
+  assert.equal(jsx.eligible, true);
+  assert.equal(jsx.decision, "payload");
+  assert.equal(jsx.filePath, path.join("fixtures", "jsx", "SimpleWidget.jsx"));
+  assert.ok(jsx.payload.contract);
+
+  const raw = decideCodexPreRead(path.join(repoRoot, "fixtures", "raw", "SimpleButton.tsx"), repoRoot);
+  assert.equal(raw.eligible, true);
+  assert.equal(raw.decision, "fallback");
+  assert.ok(raw.reasons.includes("raw-mode"));
+  assert.equal(raw.fallback.reason, "raw-mode");
+
+  const linkedTs = decideCodexPreRead(path.join(repoRoot, "fixtures", "ts-linked", "Button.types.ts"), repoRoot);
+  assert.equal(linkedTs.eligible, false);
+  assert.equal(linkedTs.decision, "fallback");
+  assert.ok(linkedTs.reasons.includes("ineligible-extension"));
+  assert.equal(linkedTs.filePath, path.join("fixtures", "ts-linked", "Button.types.ts"));
+});
+
+test("cli codex-pre-read reuses the same decision seam and advertises the command", () => {
+  const cliPayload = run(["codex-pre-read", "fixtures/compressed/FormSection.tsx"]);
+  const directPayload = decideCodexPreRead(path.join(repoRoot, "fixtures", "compressed", "FormSection.tsx"), repoRoot);
+  assert.deepEqual(cliPayload, directPayload);
+
+  const cliJsx = run(["codex-pre-read", "fixtures/jsx/SimpleWidget.jsx"]);
+  const directJsx = decideCodexPreRead(path.join(repoRoot, "fixtures", "jsx", "SimpleWidget.jsx"), repoRoot);
+  assert.deepEqual(cliJsx, directJsx);
+
+  const cliFallback = run(["codex-pre-read", "fixtures/raw/SimpleButton.tsx"]);
+  assert.equal(cliFallback.decision, "fallback");
+  assert.ok(cliFallback.reasons.includes("raw-mode"));
+
+  let usage = "";
+  try {
+    runText(["unknown-command"]);
+  } catch (error) {
+    usage = `${error.stdout ?? ""}${error.stderr ?? ""}`;
+  }
+  assert.match(usage, /codex-pre-read/);
 });
 
 test("scan indexes component and qualifying linked ts but excludes generic utils", () => {

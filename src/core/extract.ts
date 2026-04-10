@@ -98,11 +98,25 @@ function getPropsInfo(sourceFile: ts.SourceFile, componentName?: string): Extrac
   if (!componentName) return undefined;
   const declaration = findDeclarationByName(sourceFile, componentName);
   let propsName: string | undefined;
+  const propsSummary: string[] = [];
+
+  const collectBindingSummary = (name: ts.BindingName): void => {
+    if (!ts.isObjectBindingPattern(name)) return;
+    for (const element of name.elements) {
+      if (ts.isIdentifier(element.name)) {
+        propsSummary.push(`${element.name.text}${element.initializer ? "?" : ""}: unknown`);
+      }
+    }
+  };
 
   if (declaration && ts.isFunctionDeclaration(declaration)) {
     const firstParam = declaration.parameters[0];
     if (firstParam?.type && ts.isTypeReferenceNode(firstParam.type) && ts.isIdentifier(firstParam.type.typeName)) {
       propsName = firstParam.type.typeName.text;
+    }
+    if (firstParam && ts.isObjectBindingPattern(firstParam.name)) {
+      propsName = "props";
+      collectBindingSummary(firstParam.name);
     }
   }
 
@@ -113,10 +127,13 @@ function getPropsInfo(sourceFile: ts.SourceFile, componentName?: string): Extrac
       if (firstParam?.type && ts.isTypeReferenceNode(firstParam.type) && ts.isIdentifier(firstParam.type.typeName)) {
         propsName = firstParam.type.typeName.text;
       }
+      if (firstParam && ts.isObjectBindingPattern(firstParam.name)) {
+        propsName = "props";
+        collectBindingSummary(firstParam.name);
+      }
     }
   }
 
-  const propsSummary: string[] = [];
   if (propsName) {
     const propsDecl = findDeclarationByName(sourceFile, propsName);
     if (propsDecl && ts.isInterfaceDeclaration(propsDecl)) {

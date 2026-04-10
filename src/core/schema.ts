@@ -83,6 +83,40 @@ export type ModelFacingPayload = {
   snippets?: ExtractionResult["snippets"];
 };
 
+export type PayloadReadiness = {
+  ready: boolean;
+  reasons: string[];
+  signals: {
+    mode: ExtractionResult["mode"];
+    hasContract: boolean;
+    hasBehavior: boolean;
+    hasStructure: boolean;
+    hasHybridSnippets: boolean;
+    usedComplexityScore: false;
+    usedDecideReason: false;
+  };
+};
+
+export type CodexPreReadDecision = {
+  runtime: "codex";
+  filePath: string;
+  eligible: boolean;
+  decision: "payload" | "fallback";
+  reasons: string[];
+  payload?: ModelFacingPayload;
+  readiness?: PayloadReadiness;
+  debug: {
+    mode?: ExtractionResult["mode"];
+    complexityScore?: number;
+    decideReason?: string[];
+    language?: ExtractionResult["language"];
+  };
+  fallback?: {
+    action: "full-read";
+    reason: string;
+  };
+};
+
 export type IndexEntry = {
   filePath: string;
   fileHash: string;

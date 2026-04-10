@@ -9,6 +9,7 @@ import { toModelFacingPayload } from "../core/payload/model-facing";
 import { decideMode } from "../core/decide";
 import { attachCodex } from "../adapters/codex";
 import { attachClaude } from "../adapters/claude";
+import { decideCodexPreRead } from "../adapters/codex-pre-read";
 import type { ExtractionResult } from "../core/schema";
 
 function print(value: unknown): void {
@@ -116,10 +117,16 @@ function run(): void {
       print(result);
       return;
     }
+    case "codex-pre-read": {
+      const file = requireFilePath(arg1);
+      print(decideCodexPreRead(file, process.cwd()));
+      return;
+    }
     default:
       console.error(`Unknown command: ${command ?? "<none>"}`);
-      console.error(`Usage: ${cliName} <init|scan|extract|decide|attach>`);
+      console.error(`Usage: ${cliName} <init|scan|extract|decide|attach|codex-pre-read>`);
       console.error(`       ${cliName} extract <file> [--model-payload] [--json]`);
+      console.error(`       ${cliName} codex-pre-read <file> [--json]`);
       process.exitCode = 1;
   }
 }
