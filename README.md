@@ -26,6 +26,7 @@ Phase 1 is intentionally narrow:
 fxxks init
 fxxks scan
 fxxks extract <file> --json
+fxxks extract <file> --model-payload
 fxxks decide <file>
 fxxks attach codex
 fxxks attach claude
@@ -71,6 +72,21 @@ Current Phase 1 verification:
 - value-proof:
   - `FormSection.tsx`: 36.02% reduction
   - `DashboardPanel.tsx`: 45.1% reduction
+
+## Model-facing payload
+
+`extract` keeps the canonical extraction output by default. For a leaner LLM-delivery view:
+
+```bash
+fxxks extract fixtures/compressed/FormSection.tsx --model-payload
+```
+
+The model-facing payload:
+
+- keeps `mode`, relative `filePath`, `componentName`, `exports`
+- keeps `contract`, `behavior`, `structure`, minimal `style`
+- keeps `snippets` for hybrid outputs
+- drops engine metadata such as `fileHash` and `meta.generatedAt`
 
 ## Cache validation
 

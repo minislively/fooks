@@ -10,6 +10,7 @@ const repoRoot = process.cwd();
 const cli = path.join(repoRoot, "dist", "cli", "index.js");
 const require = createRequire(import.meta.url);
 const { extractFile } = require(path.join(repoRoot, "dist", "core", "extract.js"));
+const { toModelFacingPayload } = require(path.join(repoRoot, "dist", "core", "payload", "model-facing.js"));
 
 function run(args, cwd = repoRoot, envOverrides = {}) {
   return JSON.parse(execFileSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...envOverrides } }));
@@ -40,6 +41,20 @@ function reductionMetrics(filePath) {
   };
 }
 
+function modelPayloadReductionMetrics(filePath, cwd = repoRoot) {
+  const result = extractFile(path.resolve(filePath));
+  const payload = toModelFacingPayload(result, cwd);
+  const fullBytes = Buffer.byteLength(JSON.stringify(result), "utf8");
+  const payloadBytes = Buffer.byteLength(JSON.stringify(payload), "utf8");
+  return {
+    mode: result.mode,
+    fullBytes,
+    payloadBytes,
+    reductionPct: (1 - payloadBytes / fullBytes) * 100,
+    payload,
+  };
+}
+
 function runtimeManifestPath(result) {
   const detail = result.runtimeProof.details.find((item) => item.startsWith("runtime-manifest="));
   return detail ? detail.slice("runtime-manifest=".length) : result.runtimeProof.artifactPath;
@@ -65,8 +80,25 @@ test("extract keeps small fixture raw", () => {
   assert.equal(result.mode, "raw");
   assert.equal(result.componentName, "SimpleButton");
   assert.ok(result.rawText.includes("button"));
+  assert.ok(result.fileHash);
+  assert.ok(result.meta.generatedAt);
   assert.ok(result.contract.propsSummary.some((item) => item.includes("label")));
   assert.ok(result.style.summary.some((item) => item.includes("tailwind")));
+});
+
+test("extract can return model-facing payload without engine metadata", () => {
+  const result = run(["extract", "fixtures/compressed/FormSection.tsx", "--model-payload"]);
+  assert.equal(result.mode, "compressed");
+  assert.equal(result.filePath, path.join("fixtures", "compressed", "FormSection.tsx"));
+  assert.equal("fileHash" in result, false);
+  assert.equal("meta" in result, false);
+  assert.equal("rawText" in result, false);
+  assert.equal(result.componentName, "FormSection");
+  assert.ok(result.contract.propsSummary.some((item) => item.includes("fields")));
+  assert.deepEqual(result.behavior.hooks, []);
+  assert.ok(result.structure.sections.includes("section"));
+  assert.ok(result.structure.repeatedBlocks.includes("array-map-render"));
+  assert.equal(result.style.system, "tailwind");
 });
 
 test("extract produces compressed output for boilerplate-heavy fixture", () => {
@@ -83,6 +115,18 @@ test("extract produces hybrid output for complex fixture", () => {
   assert.ok(result.behavior.hooks.includes("useState"));
   assert.ok(result.behavior.eventHandlers.includes("handleAcknowledge"));
   assert.ok(result.snippets.length >= 1);
+});
+
+test("model-facing payload keeps hybrid snippets and prunes unknown style noise", () => {
+  const fullResult = extractFile(path.join(repoRoot, "fixtures", "hybrid", "DashboardPanel.tsx"));
+  const payload = toModelFacingPayload(fullResult, repoRoot);
+  assert.equal(payload.mode, "hybrid");
+  assert.equal(payload.filePath, path.join("fixtures", "hybrid", "DashboardPanel.tsx"));
+  assert.ok(payload.snippets.length >= 1);
+  assert.equal("fileHash" in payload, false);
+  assert.equal("meta" in payload, false);
+  assert.ok(payload.behavior.eventHandlers.includes("handleAcknowledge"));
+  assert.ok(payload.structure.conditionalRenders.length >= 1);
 });
 
 test("scan indexes component and qualifying linked ts but excludes generic utils", () => {
@@ -124,6 +168,30 @@ test("value-proof gate shows >=25% reduction on two long fixtures", () => {
   assert.equal(hybrid.mode, "hybrid");
   assert.ok(compressed.reductionPct >= 25, `expected compressed reduction >= 25%, received ${compressed.reductionPct.toFixed(2)}%`);
   assert.ok(hybrid.reductionPct >= 25, `expected hybrid reduction >= 25%, received ${hybrid.reductionPct.toFixed(2)}%`);
+});
+
+test("model-facing payload trim hits >=15% reduction on at least two compressed/hybrid samples", () => {
+  const tempDir = makeTempProject();
+  const candidates = [
+    modelPayloadReductionMetrics(path.join(repoRoot, "fixtures", "compressed", "FormSection.tsx")),
+    modelPayloadReductionMetrics(path.join(repoRoot, "fixtures", "hybrid", "DashboardPanel.tsx")),
+    modelPayloadReductionMetrics(path.join(tempDir, "src", "components", "DashboardPanel.tsx"), tempDir),
+  ];
+
+  const qualifying = candidates.filter((item) => item.mode !== "raw" && item.reductionPct >= 15);
+  assert.ok(
+    qualifying.length >= 2,
+    `expected >=2 qualifying reductions, received ${qualifying.map((item) => item.reductionPct.toFixed(2)).join(", ")}`,
+  );
+
+  for (const candidate of candidates.filter((item) => item.mode !== "raw")) {
+    assert.ok(candidate.payload.contract);
+    assert.ok(candidate.payload.behavior);
+    assert.ok(candidate.payload.structure);
+    if (candidate.mode === "hybrid") {
+      assert.ok(candidate.payload.snippets?.length);
+    }
+  }
 });
 
 test("attach codex proves contract and runtime under minislively account context", () => {

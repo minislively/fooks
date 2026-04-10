@@ -56,6 +56,33 @@ export type ExtractionResult = {
   };
 };
 
+export type ModelFacingPayload = {
+  mode: OutputMode;
+  filePath: string;
+  componentName?: string;
+  exports?: ExtractionResult["exports"];
+  contract?: ExtractionResult["contract"];
+  behavior?: {
+    hooks: string[];
+    stateSummary?: string[];
+    effects?: string[];
+    eventHandlers?: string[];
+    hasSideEffects?: boolean;
+  };
+  structure?: {
+    sections?: string[];
+    conditionalRenders?: string[];
+    repeatedBlocks?: string[];
+    jsxDepth?: number;
+  };
+  style?: {
+    system?: StyleSystem;
+    summary?: string[];
+    hasStyleBranching?: boolean;
+  };
+  snippets?: ExtractionResult["snippets"];
+};
+
 export type IndexEntry = {
   filePath: string;
   fileHash: string;

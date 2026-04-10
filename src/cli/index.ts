@@ -5,6 +5,7 @@ import { ensureFeLensDirs, configPath } from "../core/paths";
 import { scanProject } from "../core/scan";
 import { discoverProjectFiles } from "../core/discover";
 import { extractFile } from "../core/extract";
+import { toModelFacingPayload } from "../core/payload/model-facing";
 import { decideMode } from "../core/decide";
 import { attachCodex } from "../adapters/codex";
 import { attachClaude } from "../adapters/claude";
@@ -38,8 +39,31 @@ function resolveAttachSampleFile(cwd = process.cwd()): string {
   return target.filePath;
 }
 
+function parseExtractArgs(args: string[]): { filePath: string; modelPayload: boolean } {
+  let filePath: string | undefined;
+  let modelPayload = false;
+
+  for (const arg of args) {
+    if (arg === "--model-payload") {
+      modelPayload = true;
+      continue;
+    }
+    if (arg === "--json") {
+      continue;
+    }
+    if (!filePath) {
+      filePath = arg;
+      continue;
+    }
+    throw new Error(`Unexpected extract argument: ${arg}`);
+  }
+
+  return { filePath: requireFilePath(filePath), modelPayload };
+}
+
 function run(): void {
-  const [command, arg1] = process.argv.slice(2);
+  const [command, ...rest] = process.argv.slice(2);
+  const [arg1] = rest;
   const cliName = path.basename(process.argv[1] ?? "fxxks");
 
   switch (command) {
@@ -70,9 +94,9 @@ function run(): void {
       return;
     }
     case "extract": {
-      const file = requireFilePath(arg1);
+      const { filePath: file, modelPayload } = parseExtractArgs(rest);
       const result = extractFile(file);
-      print(result);
+      print(modelPayload ? toModelFacingPayload(result) : result);
       return;
     }
     case "decide": {
@@ -95,6 +119,7 @@ function run(): void {
     default:
       console.error(`Unknown command: ${command ?? "<none>"}`);
       console.error(`Usage: ${cliName} <init|scan|extract|decide|attach>`);
+      console.error(`       ${cliName} extract <file> [--model-payload] [--json]`);
       process.exitCode = 1;
   }
 }
