@@ -1,0 +1,139 @@
+import fs from "node:fs";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+import { adapterDir, ensureFeLensDirs } from "../core/paths";
+import type { AttachResult, ExtractionResult } from "../core/schema";
+
+type AccountDetection = {
+  account: string;
+  source: "env" | "config" | "git-remote" | "package-repository" | "unknown";
+};
+
+function extractGithubOwner(value: string | undefined): string | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  const match = normalized.match(/github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  return match?.[1] ?? null;
+}
+
+function configAccount(cwd: string): string | null {
+  const configFile = path.join(cwd, ".fe-lens", "config.json");
+  if (!fs.existsSync(configFile)) return null;
+  const config = JSON.parse(fs.readFileSync(configFile, "utf8")) as { targetAccount?: string };
+  return config.targetAccount ?? null;
+}
+
+function gitRemoteAccount(cwd: string): string | null {
+  try {
+    const remote = execFileSync("git", ["remote", "get-url", "origin"], {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return extractGithubOwner(remote);
+  } catch {
+    return null;
+  }
+}
+
+function packageRepositoryAccount(cwd: string): string | null {
+  const pkgPath = path.join(cwd, "package.json");
+  if (!fs.existsSync(pkgPath)) return null;
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as { repository?: string | { url?: string } };
+  const repoValue = typeof pkg.repository === "string" ? pkg.repository : pkg.repository?.url;
+  return extractGithubOwner(repoValue);
+}
+
+export function detectAccountContext(cwd = process.cwd()): AccountDetection {
+  const envAccount = process.env.FE_LENS_ACTIVE_ACCOUNT?.trim();
+  if (envAccount) {
+    return { account: envAccount, source: "env" };
+  }
+
+  const configuredAccount = configAccount(cwd);
+  if (configuredAccount) {
+    return { account: configuredAccount, source: "config" };
+  }
+
+  const remoteAccount = gitRemoteAccount(cwd);
+  if (remoteAccount) {
+    return { account: remoteAccount, source: "git-remote" };
+  }
+
+  const repositoryAccount = packageRepositoryAccount(cwd);
+  if (repositoryAccount) {
+    return { account: repositoryAccount, source: "package-repository" };
+  }
+
+  return { account: "unknown", source: "unknown" };
+}
+
+export function accountContext(cwd = process.cwd()): string {
+  return detectAccountContext(cwd).account;
+}
+
+export function contractProof(sample: ExtractionResult): { passed: boolean; details: string[] } {
+  const details: string[] = [];
+  if (sample.filePath) details.push("filePath");
+  if (sample.fileHash) details.push("fileHash");
+  if (["raw", "compressed", "hybrid"].includes(sample.mode)) details.push("mode");
+  if (Array.isArray(sample.exports)) details.push("exports");
+  if (sample.meta?.generatedAt) details.push("meta.generatedAt");
+  return { passed: details.length >= 5, details };
+}
+
+export function writeAdapterFiles(runtime: "codex" | "claude", cwd = process.cwd()): string[] {
+  ensureFeLensDirs(cwd);
+  const dir = adapterDir(runtime, cwd);
+  fs.mkdirSync(dir, { recursive: true });
+  const files = [
+    path.join(dir, "adapter.json"),
+    path.join(dir, "context-template.md"),
+  ];
+  fs.writeFileSync(files[0], JSON.stringify({ runtime, installedAt: new Date().toISOString() }, null, 2));
+  fs.writeFileSync(files[1], `# ${runtime} adapter\n\nUse fe-lens output as pre-read context before opening the full source file.\n`);
+  return files;
+}
+
+function runtimeHome(runtime: "codex" | "claude"): string {
+  const override = runtime === "codex" ? process.env.FE_LENS_CODEX_HOME : process.env.FE_LENS_CLAUDE_HOME;
+  if (override) {
+    return override;
+  }
+  return path.join(os.homedir(), runtime === "codex" ? ".codex" : ".claude");
+}
+
+export function installRuntimeManifest(runtime: "codex" | "claude", cwd = process.cwd()): string | null {
+  const home = runtimeHome(runtime);
+  if (!fs.existsSync(home)) {
+    return null;
+  }
+
+  const projectName = path.basename(cwd).replace(/[^a-z0-9._-]+/gi, "-").toLowerCase();
+  const manifestPath = path.join(home, "fe-lens", "attachments", `${projectName}.json`);
+  fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
+  fs.writeFileSync(
+    manifestPath,
+    JSON.stringify(
+      {
+        runtime,
+        projectRoot: cwd,
+        installedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
+  return manifestPath;
+}
+
+export function finalizeAttach(runtime: "codex" | "claude", sample: ExtractionResult, runtimeProof: AttachResult["runtimeProof"], cwd = process.cwd()): AttachResult {
+  return {
+    runtime,
+    accountContext: accountContext(cwd),
+    filesCreated: writeAdapterFiles(runtime, cwd).map((file) => path.relative(cwd, file)),
+    contractProof: contractProof(sample),
+    runtimeProof,
+  };
+}

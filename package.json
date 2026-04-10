@@ -1,0 +1,34 @@
+{
+  "name": "fxxks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "bin": {
+    "fe-lens": "dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:integration": "npm run build && node --test test/*.test.mjs",
+    "bench:cache": "npm run build && node scripts/benchmark-cache.mjs",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  },
+  "description": "fxxks repository containing the Phase 1 frontend context compression engine for React/TSX.",
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/minislively/fxxks.git"
+  },
+  "bugs": {
+    "url": "https://github.com/minislively/fxxks/issues"
+  },
+  "homepage": "https://github.com/minislively/fxxks#readme"
+}

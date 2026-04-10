@@ -1,0 +1,4 @@
+.omx/
+node_modules/
+dist/
+.fe-lens/
