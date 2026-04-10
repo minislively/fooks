@@ -40,6 +40,7 @@ function resolveAttachSampleFile(cwd = process.cwd()): string {
 
 function run(): void {
   const [command, arg1] = process.argv.slice(2);
+  const cliName = path.basename(process.argv[1] ?? "fxxks");
 
   switch (command) {
     case "init": {
@@ -93,7 +94,7 @@ function run(): void {
     }
     default:
       console.error(`Unknown command: ${command ?? "<none>"}`);
-      console.error("Usage: fe-lens <init|scan|extract|decide|attach>");
+      console.error(`Usage: ${cliName} <init|scan|extract|decide|attach>`);
       process.exitCode = 1;
   }
 }

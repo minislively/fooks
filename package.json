@@ -4,6 +4,7 @@
   "private": true,
   "type": "commonjs",
   "bin": {
+    "fxxks": "dist/cli/index.js",
     "fe-lens": "dist/cli/index.js"
   },
   "scripts": {

@@ -1,13 +1,14 @@
 # fxxks
 
 Repository name: `fxxks`  
-Phase 1 engine codename: `fe-lens`
+Primary CLI command: `fxxks`  
+Phase 1 engine codename / compatibility alias: `fe-lens`
 
 Local frontend-only context compression engine for React/TSX files.
 
 ## What it does
 
-`fe-lens` reduces AI read cost before a coding runtime opens full frontend source by returning one of:
+`fxxks` reduces AI read cost before a coding runtime opens full frontend source by returning one of:
 
 - `raw`
 - `compressed`
@@ -23,13 +24,15 @@ Phase 1 is intentionally narrow:
 ## Commands
 
 ```bash
-fe-lens init
-fe-lens scan
-fe-lens extract <file> --json
-fe-lens decide <file>
-fe-lens attach codex
-fe-lens attach claude
+fxxks init
+fxxks scan
+fxxks extract <file> --json
+fxxks decide <file>
+fxxks attach codex
+fxxks attach claude
 ```
+
+Legacy PHASE 1 docs may still refer to `fe-lens`; both command names resolve to the same CLI.
 
 ## Account context
 
