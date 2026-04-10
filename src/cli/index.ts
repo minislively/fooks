@@ -10,6 +10,7 @@ import { decideMode } from "../core/decide";
 import { attachCodex } from "../adapters/codex";
 import { attachClaude } from "../adapters/claude";
 import { decideCodexPreRead } from "../adapters/codex-pre-read";
+import { handleCodexRuntimeHook } from "../adapters/codex-runtime-hook";
 import type { ExtractionResult } from "../core/schema";
 
 function print(value: unknown): void {
@@ -60,6 +61,56 @@ function parseExtractArgs(args: string[]): { filePath: string; modelPayload: boo
   }
 
   return { filePath: requireFilePath(filePath), modelPayload };
+}
+
+function parseCodexRuntimeHookArgs(args: string[]): {
+  event: "SessionStart" | "UserPromptSubmit" | "Stop";
+  prompt?: string;
+  sessionId?: string;
+  threadId?: string;
+  turnId?: string;
+} {
+  let event: "SessionStart" | "UserPromptSubmit" | "Stop" | undefined;
+  let prompt: string | undefined;
+  let sessionId: string | undefined;
+  let threadId: string | undefined;
+  let turnId: string | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    switch (arg) {
+      case "--json":
+        break;
+      case "--event":
+        event = args[index + 1] as typeof event;
+        index += 1;
+        break;
+      case "--prompt":
+        prompt = args[index + 1];
+        index += 1;
+        break;
+      case "--session-id":
+        sessionId = args[index + 1];
+        index += 1;
+        break;
+      case "--thread-id":
+        threadId = args[index + 1];
+        index += 1;
+        break;
+      case "--turn-id":
+        turnId = args[index + 1];
+        index += 1;
+        break;
+      default:
+        throw new Error(`Unexpected codex-runtime-hook argument: ${arg}`);
+    }
+  }
+
+  if (event !== "SessionStart" && event !== "UserPromptSubmit" && event !== "Stop") {
+    throw new Error("codex-runtime-hook requires --event <SessionStart|UserPromptSubmit|Stop>");
+  }
+
+  return { event, prompt, sessionId, threadId, turnId };
 }
 
 function run(): void {
@@ -122,11 +173,28 @@ function run(): void {
       print(decideCodexPreRead(file, process.cwd()));
       return;
     }
+    case "codex-runtime-hook": {
+      const options = parseCodexRuntimeHookArgs(rest);
+      print(
+        handleCodexRuntimeHook(
+          {
+            hookEventName: options.event,
+            prompt: options.prompt,
+            sessionId: options.sessionId,
+            threadId: options.threadId,
+            turnId: options.turnId,
+          },
+          process.cwd(),
+        ),
+      );
+      return;
+    }
     default:
       console.error(`Unknown command: ${command ?? "<none>"}`);
-      console.error(`Usage: ${cliName} <init|scan|extract|decide|attach|codex-pre-read>`);
+      console.error(`Usage: ${cliName} <init|scan|extract|decide|attach|codex-pre-read|codex-runtime-hook>`);
       console.error(`       ${cliName} extract <file> [--model-payload] [--json]`);
       console.error(`       ${cliName} codex-pre-read <file> [--json]`);
+      console.error(`       ${cliName} codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop> [--session-id <id>] [--prompt <text>] [--json]`);
       process.exitCode = 1;
   }
 }

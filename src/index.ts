@@ -6,3 +6,13 @@ export { decideMode } from "./core/decide";
 export { attachCodex } from "./adapters/codex";
 export { attachClaude } from "./adapters/claude";
 export { decideCodexPreRead } from "./adapters/codex-pre-read";
+export { extractPromptTarget, hasFullReadEscapeHatch, codexRuntimeEscapeHatches } from "./adapters/codex-runtime-prompt";
+export {
+  resolveCodexRuntimeSessionKey,
+  codexRuntimeSessionPath,
+  readCodexRuntimeSession,
+  initializeCodexRuntimeSession,
+  markCodexRuntimeSeenFile,
+  clearCodexRuntimeSession,
+} from "./adapters/codex-runtime-session";
+export { handleCodexRuntimeHook } from "./adapters/codex-runtime-hook";

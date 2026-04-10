@@ -104,7 +104,7 @@ function runtimeHome(runtime: "codex" | "claude"): string {
   return path.join(os.homedir(), runtime === "codex" ? ".codex" : ".claude");
 }
 
-export function installRuntimeManifest(runtime: "codex" | "claude", cwd = process.cwd()): string | null {
+export function installRuntimeManifest(runtime: "codex" | "claude", cwd = process.cwd(), metadata: Record<string, unknown> = {}): string | null {
   const home = runtimeHome(runtime);
   if (!fs.existsSync(home)) {
     return null;
@@ -120,6 +120,7 @@ export function installRuntimeManifest(runtime: "codex" | "claude", cwd = proces
         runtime,
         projectRoot: cwd,
         installedAt: new Date().toISOString(),
+        ...metadata,
       },
       null,
       2,

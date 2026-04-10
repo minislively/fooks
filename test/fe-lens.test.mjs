@@ -13,6 +13,14 @@ const { extractFile } = require(path.join(repoRoot, "dist", "core", "extract.js"
 const { toModelFacingPayload } = require(path.join(repoRoot, "dist", "core", "payload", "model-facing.js"));
 const { assessPayloadReadiness } = require(path.join(repoRoot, "dist", "core", "payload", "readiness.js"));
 const { decideCodexPreRead } = require(path.join(repoRoot, "dist", "adapters", "codex-pre-read.js"));
+const {
+  extractPromptTarget,
+  hasFullReadEscapeHatch,
+} = require(path.join(repoRoot, "dist", "adapters", "codex-runtime-prompt.js"));
+const {
+  codexRuntimeSessionPath,
+} = require(path.join(repoRoot, "dist", "adapters", "codex-runtime-session.js"));
+const { handleCodexRuntimeHook } = require(path.join(repoRoot, "dist", "adapters", "codex-runtime-hook.js"));
 
 function run(args, cwd = repoRoot, envOverrides = {}) {
   return JSON.parse(execFileSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...envOverrides } }));
@@ -218,6 +226,211 @@ test("cli codex-pre-read reuses the same decision seam and advertises the comman
   assert.match(usage, /codex-pre-read/);
 });
 
+test("runtime prompt parser finds eligible tsx/jsx paths and escape hatches", () => {
+  const tsxTarget = extractPromptTarget("Please update components/QuestionAnswerForm.tsx for this flow", path.join(repoRoot, "..", "ai-job-finder"));
+  assert.equal(tsxTarget, path.join("components", "QuestionAnswerForm.tsx"));
+
+  const jsxTarget = extractPromptTarget("Review fixtures/jsx/SimpleWidget.jsx for repeated work", repoRoot);
+  assert.equal(jsxTarget, path.join("fixtures", "jsx", "SimpleWidget.jsx"));
+
+  const tsTarget = extractPromptTarget("Check fixtures/ts-linked/Button.types.ts too", repoRoot);
+  assert.equal(tsTarget, null);
+
+  assert.equal(hasFullReadEscapeHatch("Need exact source #fxxks-full-read"), true);
+  assert.equal(hasFullReadEscapeHatch("Need exact source #fxxks-disable-pre-read"), true);
+  assert.equal(hasFullReadEscapeHatch("No override here"), false);
+});
+
+test("runtime hook reuses payload only on repeated same-file prompts in one session", () => {
+  const sessionId = `hook-repeat-${Date.now()}`;
+  const start = handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId }, repoRoot);
+  assert.equal(start.action, "noop");
+  assert.ok(fs.existsSync(codexRuntimeSessionPath(repoRoot, sessionId)));
+
+  const first = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId,
+      prompt: "Please update fixtures/compressed/FormSection.tsx",
+    },
+    repoRoot,
+  );
+  assert.equal(first.action, "record");
+  assert.equal(first.filePath, path.join("fixtures", "compressed", "FormSection.tsx"));
+  assert.equal(first.additionalContext, undefined);
+
+  const second = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId,
+      prompt: "Again, update fixtures/compressed/FormSection.tsx",
+    },
+    repoRoot,
+  );
+  assert.equal(second.action, "inject");
+  assert.equal(second.filePath, path.join("fixtures", "compressed", "FormSection.tsx"));
+  assert.ok(second.additionalContext.includes("fxxks pre-read reused"));
+  assert.ok(second.additionalContext.includes("#fxxks-full-read"));
+  assert.equal(second.debug.repeatedFile, true);
+});
+
+test("runtime hook falls back for escape hatch and raw readiness failures", () => {
+  const rawSession = `hook-raw-${Date.now()}`;
+  handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: rawSession }, repoRoot);
+  handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: rawSession,
+      prompt: "Review fixtures/raw/SimpleButton.tsx",
+    },
+    repoRoot,
+  );
+  const rawSecond = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: rawSession,
+      prompt: "Again, review fixtures/raw/SimpleButton.tsx",
+    },
+    repoRoot,
+  );
+  assert.equal(rawSecond.action, "fallback");
+  assert.ok(rawSecond.reasons.includes("raw-mode"));
+  assert.equal(rawSecond.fallback.reason, "raw-mode");
+
+  const overrideSession = `hook-override-${Date.now()}`;
+  handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: overrideSession }, repoRoot);
+  const overridden = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: overrideSession,
+      prompt: "Please inspect fixtures/compressed/FormSection.tsx #fxxks-full-read",
+    },
+    repoRoot,
+  );
+  assert.equal(overridden.action, "fallback");
+  assert.ok(overridden.reasons.includes("escape-hatch-full-read"));
+  assert.equal(overridden.fallback.reason, "escape-hatch-full-read");
+  assert.equal(overridden.debug.escapeHatchUsed, true);
+});
+
+test("runtime hook supports jsx repeated prompts and ignores linked ts prompts", () => {
+  const jsxSession = `hook-jsx-${Date.now()}`;
+  handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: jsxSession }, repoRoot);
+  handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: jsxSession,
+      prompt: "Check fixtures/jsx/SimpleWidget.jsx",
+    },
+    repoRoot,
+  );
+  const jsxSecond = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: jsxSession,
+      prompt: "Again, check fixtures/jsx/SimpleWidget.jsx",
+    },
+    repoRoot,
+  );
+  assert.equal(jsxSecond.action, "inject");
+  assert.equal(jsxSecond.filePath, path.join("fixtures", "jsx", "SimpleWidget.jsx"));
+
+  const tsSession = `hook-ts-${Date.now()}`;
+  handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: tsSession }, repoRoot);
+  const tsPrompt = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: tsSession,
+      prompt: "Check fixtures/ts-linked/Button.types.ts",
+    },
+    repoRoot,
+  );
+  assert.equal(tsPrompt.action, "noop");
+  assert.ok(tsPrompt.reasons.includes("no-eligible-file-in-prompt"));
+});
+
+test("cli codex-runtime-hook reuses runtime decision logic and advertises the command", () => {
+  const cliStartSession = `cli-hook-start-${Date.now()}`;
+  const directStartSession = `${cliStartSession}-direct`;
+  const cliStart = run(["codex-runtime-hook", "--event", "SessionStart", "--session-id", cliStartSession]);
+  const directStart = handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: directStartSession }, repoRoot);
+  directStart.statePath = cliStart.statePath;
+  assert.deepEqual(cliStart, directStart);
+
+  const cliFirstSession = `cli-hook-first-${Date.now()}`;
+  const directFirstSession = `${cliFirstSession}-direct`;
+  run(["codex-runtime-hook", "--event", "SessionStart", "--session-id", cliFirstSession]);
+  handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: directFirstSession }, repoRoot);
+  const cliFirst = run([
+    "codex-runtime-hook",
+    "--event",
+    "UserPromptSubmit",
+    "--session-id",
+    cliFirstSession,
+    "--prompt",
+    "Please update fixtures/compressed/FormSection.tsx",
+  ]);
+  const directFirst = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: directFirstSession,
+      prompt: "Please update fixtures/compressed/FormSection.tsx",
+    },
+    repoRoot,
+  );
+  directFirst.statePath = cliFirst.statePath;
+  assert.deepEqual(cliFirst, directFirst);
+
+  const cliSecondSession = `cli-hook-second-${Date.now()}`;
+  const directSecondSession = `${cliSecondSession}-direct`;
+  run(["codex-runtime-hook", "--event", "SessionStart", "--session-id", cliSecondSession]);
+  handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: directSecondSession }, repoRoot);
+  run([
+    "codex-runtime-hook",
+    "--event",
+    "UserPromptSubmit",
+    "--session-id",
+    cliSecondSession,
+    "--prompt",
+    "Please update fixtures/compressed/FormSection.tsx",
+  ]);
+  handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: directSecondSession,
+      prompt: "Please update fixtures/compressed/FormSection.tsx",
+    },
+    repoRoot,
+  );
+  const cliSecond = run([
+    "codex-runtime-hook",
+    "--event",
+    "UserPromptSubmit",
+    "--session-id",
+    cliSecondSession,
+    "--prompt",
+    "Again, update fixtures/compressed/FormSection.tsx",
+  ]);
+  const directSecond = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: directSecondSession,
+      prompt: "Again, update fixtures/compressed/FormSection.tsx",
+    },
+    repoRoot,
+  );
+  directSecond.statePath = cliSecond.statePath;
+  assert.deepEqual(cliSecond, directSecond);
+
+  let usage = "";
+  try {
+    runText(["unknown-command"]);
+  } catch (error) {
+    usage = `${error.stdout ?? ""}${error.stderr ?? ""}`;
+  }
+  assert.match(usage, /codex-runtime-hook/);
+});
+
 test("scan indexes component and qualifying linked ts but excludes generic utils", () => {
   const tempDir = makeTempProject();
   const result = run(["scan"], tempDir);
@@ -296,6 +509,10 @@ test("attach codex proves contract and runtime under minislively account context
   assert.ok(result.runtimeProof.details.some((item) => item.includes("runtime-manifest=")));
   assert.ok(result.runtimeProof.details.some((item) => item.includes("account-source=")));
   assert.ok(fs.existsSync(runtimeManifestPath(result)));
+  const runtimeManifest = JSON.parse(fs.readFileSync(runtimeManifestPath(result), "utf8"));
+  assert.equal(runtimeManifest.runtimeBridge.command, "fxxks codex-runtime-hook");
+  assert.deepEqual(runtimeManifest.runtimeBridge.supportedHookEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
+  assert.ok(runtimeManifest.runtimeBridge.escapeHatches.includes("#fxxks-full-read"));
 });
 
 test("attach claude can report blocker without failing contract proof", () => {

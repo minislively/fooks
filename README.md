@@ -29,6 +29,7 @@ fxxks extract <file> --json
 fxxks extract <file> --model-payload
 fxxks decide <file>
 fxxks codex-pre-read <file>
+fxxks codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop>
 fxxks attach codex
 fxxks attach claude
 ```
@@ -110,6 +111,37 @@ It is intentionally narrow in v1:
   - `ineligible-extension`
 
 This command proves the decision/debug seam that a future automatic Codex hook can reuse. It is **not** the full runtime-wide interception layer yet.
+
+## Codex runtime hook bridge
+
+`fxxks` now exposes a first runtime-hook bridge that is grounded in the Codex hook surfaces we can actually verify locally today:
+
+- `SessionStart`
+- `UserPromptSubmit`
+- `Stop`
+
+The v1 bridge is intentionally narrow:
+
+- `.tsx/.jsx` only
+- repeated same-file work in one session
+- quiet by default
+- full-read escape hatch via `#fxxks-full-read` or `#fxxks-disable-pre-read`
+
+Example debug flow:
+
+```bash
+fxxks codex-runtime-hook --event SessionStart --session-id demo
+fxxks codex-runtime-hook --event UserPromptSubmit --session-id demo --prompt "Please update fixtures/compressed/FormSection.tsx"
+fxxks codex-runtime-hook --event UserPromptSubmit --session-id demo --prompt "Again, update fixtures/compressed/FormSection.tsx"
+```
+
+Expected behavior:
+
+- first prompt mention records the file quietly
+- second prompt mention can reuse `fxxks` pre-read payload
+- override markers force immediate full-read fallback
+
+This is a **prompt/session bridge**, not a claim that Codex already exposes a universal low-level file-read hook.
 
 ## Cache validation
 

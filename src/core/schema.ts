@@ -117,6 +117,37 @@ export type CodexPreReadDecision = {
   };
 };
 
+export type CodexRuntimeHookEvent = "SessionStart" | "UserPromptSubmit" | "Stop";
+
+export type CodexRuntimeHookInput = {
+  hookEventName: CodexRuntimeHookEvent;
+  prompt?: string;
+  sessionId?: string;
+  threadId?: string;
+  turnId?: string;
+  cwd?: string;
+};
+
+export type CodexRuntimeHookDecision = {
+  runtime: "codex";
+  hookEventName: CodexRuntimeHookEvent;
+  action: "noop" | "record" | "inject" | "fallback";
+  filePath?: string;
+  reasons: string[];
+  statePath?: string;
+  additionalContext?: string;
+  debug?: {
+    repeatedFile: boolean;
+    eligible: boolean;
+    escapeHatchUsed: boolean;
+    decision?: CodexPreReadDecision;
+  };
+  fallback?: {
+    action: "full-read";
+    reason: string;
+  };
+};
+
 export type IndexEntry = {
   filePath: string;
   fileHash: string;
