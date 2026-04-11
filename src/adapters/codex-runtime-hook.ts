@@ -12,9 +12,8 @@ import type { CodexRuntimeHookDecision, CodexRuntimeHookInput, ModelFacingPayloa
 
 function buildAdditionalContext(filePath: string, payload: ModelFacingPayload): string {
   return [
-    buildPreReadReuseStatus(payload.mode),
-    `file: ${filePath}`,
-    `fxxks: use ${codexRuntimeEscapeHatches()[0]} for full source`,
+    `${buildPreReadReuseStatus(payload.mode)} · file: ${filePath} · use ${codexRuntimeEscapeHatches()[0]} for full source`,
+    "",
     JSON.stringify(payload, null, 2),
   ].join("\n");
 }

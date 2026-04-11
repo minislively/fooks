@@ -50,11 +50,7 @@ function buildFallbackAdditionalContext(filePath: string | undefined, reason: st
   const leadLine = reason === "escape-hatch-full-read"
     ? buildFullReadRequestedStatus()
     : buildFallbackStatus(reason);
-  return [
-    leadLine,
-    `file: ${target}`,
-    `Read the full source file for this turn.`,
-  ].join("\n");
+  return `${leadLine} · file: ${target} · Read the full source file for this turn.`;
 }
 
 function toHookSpecificOutput(hookEventName: CodexRuntimeHookEvent, additionalContext: string): CodexNativeHookOutput {

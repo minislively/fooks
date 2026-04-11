@@ -279,8 +279,11 @@ test("runtime hook reuses payload only on repeated same-file prompts in one sess
   );
   assert.equal(second.action, "inject");
   assert.equal(second.filePath, path.join("fixtures", "compressed", "FormSection.tsx"));
-  assert.ok(second.additionalContext.includes("fxxks: reused pre-read (compressed)"));
-  assert.ok(second.additionalContext.includes(`file: ${path.join("fixtures", "compressed", "FormSection.tsx")}`));
+  assert.ok(
+    second.additionalContext.startsWith(
+      `fxxks: reused pre-read (compressed) · file: ${path.join("fixtures", "compressed", "FormSection.tsx")}`,
+    ),
+  );
   assert.ok(second.additionalContext.includes("#fxxks-full-read"));
   assert.equal(second.debug.repeatedFile, true);
 });
@@ -480,7 +483,10 @@ test("native hook bridge only activates inside attached codex projects", () => {
     attachedDir,
   );
   assert.equal(second.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-  assert.match(second.hookSpecificOutput.additionalContext, /fxxks: reused pre-read \(compressed\)/);
+  assert.match(
+    second.hookSpecificOutput.additionalContext,
+    /fxxks: reused pre-read \(compressed\) · file: src\/components\/FormSection\.tsx/,
+  );
 });
 
 test("native hook bridge emits full-read guidance for repeated fallback cases", () => {
@@ -507,8 +513,10 @@ test("native hook bridge emits full-read guidance for repeated fallback cases", 
     attachedDir,
   );
   assert.equal(fallback.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-  assert.match(fallback.hookSpecificOutput.additionalContext, /fxxks: fallback \(raw-mode\)/);
-  assert.match(fallback.hookSpecificOutput.additionalContext, /Read the full source file/);
+  assert.match(
+    fallback.hookSpecificOutput.additionalContext,
+    /fxxks: fallback \(raw-mode\) · file: src\/components\/SimpleButton\.tsx · Read the full source file for this turn\./,
+  );
 });
 
 test("native hook bridge uses fixed full-read status vocabulary for escape hatch overrides", () => {
@@ -525,7 +533,10 @@ test("native hook bridge uses fixed full-read status vocabulary for escape hatch
     attachedDir,
   );
   assert.equal(overridden.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-  assert.match(overridden.hookSpecificOutput.additionalContext, /^fxxks: full read requested/m);
+  assert.match(
+    overridden.hookSpecificOutput.additionalContext,
+    /^fxxks: full read requested · file: src\/components\/FormSection\.tsx · Read the full source file for this turn\.$/,
+  );
   assert.doesNotMatch(overridden.hookSpecificOutput.additionalContext, /fallback \(/);
 });
 
@@ -557,7 +568,10 @@ test("cli codex-runtime-hook can read native hook payloads from stdin", () => {
     ),
   );
   assert.equal(cliSecond.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-  assert.match(cliSecond.hookSpecificOutput.additionalContext, /fxxks: reused pre-read \(compressed\)/);
+  assert.match(
+    cliSecond.hookSpecificOutput.additionalContext,
+    /fxxks: reused pre-read \(compressed\) · file: src\/components\/FormSection\.tsx/,
+  );
 });
 
 test("scan indexes component and qualifying linked ts but excludes generic utils", () => {
