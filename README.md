@@ -140,8 +140,9 @@ fxxks codex-runtime-hook --event UserPromptSubmit --session-id demo --prompt "Ag
 Expected behavior:
 
 - first prompt mention records the file quietly
-- second prompt mention can reuse `fxxks` pre-read payload
-- override markers force immediate full-read fallback
+- second prompt mention can reuse `fxxks` pre-read payload and emits `fxxks: reused pre-read (<mode>)`
+- override markers force immediate full-read fallback and emit `fxxks: full read requested`
+- readiness fallback emits `fxxks: fallback (<reason>)`
 
 This is a **prompt/session bridge**, not a claim that Codex already exposes a universal low-level file-read hook.
 

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { decideCodexPreRead } from "./codex-pre-read";
 import { codexRuntimeEscapeHatches, extractPromptTarget, hasFullReadEscapeHatch } from "./codex-runtime-prompt";
+import { buildPreReadReuseStatus } from "./codex-runtime-status";
 import {
   clearCodexRuntimeSession,
   initializeCodexRuntimeSession,
@@ -11,9 +12,9 @@ import type { CodexRuntimeHookDecision, CodexRuntimeHookInput, ModelFacingPayloa
 
 function buildAdditionalContext(filePath: string, payload: ModelFacingPayload): string {
   return [
-    `fxxks pre-read reused for repeated frontend file: ${filePath}`,
-    `mode: ${payload.mode}`,
-    `If full source is required for this turn, include ${codexRuntimeEscapeHatches()[0]}.`,
+    buildPreReadReuseStatus(payload.mode),
+    `file: ${filePath}`,
+    `fxxks: use ${codexRuntimeEscapeHatches()[0]} for full source`,
     JSON.stringify(payload, null, 2),
   ].join("\n");
 }

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { handleCodexRuntimeHook } from "./codex-runtime-hook";
+import { buildFallbackStatus, buildFullReadRequestedStatus } from "./codex-runtime-status";
 import type { CodexNativeHookOutput, CodexRuntimeHookEvent, CodexRuntimeHookInput } from "../core/schema";
 
 type NativePayload = Record<string, unknown>;
@@ -46,10 +47,13 @@ function findAttachedProjectRoot(startCwd: string): string | null {
 
 function buildFallbackAdditionalContext(filePath: string | undefined, reason: string): string {
   const target = filePath ?? "requested frontend file";
+  const leadLine = reason === "escape-hatch-full-read"
+    ? buildFullReadRequestedStatus()
+    : buildFallbackStatus(reason);
   return [
-    `fxxks pre-read skipped for ${target}.`,
+    leadLine,
+    `file: ${target}`,
     `Read the full source file for this turn.`,
-    `reason: ${reason}`,
   ].join("\n");
 }
 

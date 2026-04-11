@@ -279,7 +279,8 @@ test("runtime hook reuses payload only on repeated same-file prompts in one sess
   );
   assert.equal(second.action, "inject");
   assert.equal(second.filePath, path.join("fixtures", "compressed", "FormSection.tsx"));
-  assert.ok(second.additionalContext.includes("fxxks pre-read reused"));
+  assert.ok(second.additionalContext.includes("fxxks: reused pre-read (compressed)"));
+  assert.ok(second.additionalContext.includes(`file: ${path.join("fixtures", "compressed", "FormSection.tsx")}`));
   assert.ok(second.additionalContext.includes("#fxxks-full-read"));
   assert.equal(second.debug.repeatedFile, true);
 });
@@ -479,7 +480,7 @@ test("native hook bridge only activates inside attached codex projects", () => {
     attachedDir,
   );
   assert.equal(second.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-  assert.match(second.hookSpecificOutput.additionalContext, /fxxks pre-read reused/);
+  assert.match(second.hookSpecificOutput.additionalContext, /fxxks: reused pre-read \(compressed\)/);
 });
 
 test("native hook bridge emits full-read guidance for repeated fallback cases", () => {
@@ -506,8 +507,26 @@ test("native hook bridge emits full-read guidance for repeated fallback cases", 
     attachedDir,
   );
   assert.equal(fallback.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+  assert.match(fallback.hookSpecificOutput.additionalContext, /fxxks: fallback \(raw-mode\)/);
   assert.match(fallback.hookSpecificOutput.additionalContext, /Read the full source file/);
-  assert.match(fallback.hookSpecificOutput.additionalContext, /raw-mode/);
+});
+
+test("native hook bridge uses fixed full-read status vocabulary for escape hatch overrides", () => {
+  const attachedDir = makeTempProject();
+  run(["attach", "codex"], attachedDir, { FE_LENS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-")) });
+
+  const overridden = handleCodexNativeHookPayload(
+    {
+      hook_event_name: "UserPromptSubmit",
+      cwd: attachedDir,
+      prompt: "Need exact source src/components/FormSection.tsx #fxxks-full-read",
+      session_id: `native-escape-${Date.now()}`,
+    },
+    attachedDir,
+  );
+  assert.equal(overridden.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+  assert.match(overridden.hookSpecificOutput.additionalContext, /^fxxks: full read requested/m);
+  assert.doesNotMatch(overridden.hookSpecificOutput.additionalContext, /fallback \(/);
 });
 
 test("cli codex-runtime-hook can read native hook payloads from stdin", () => {
@@ -538,7 +557,7 @@ test("cli codex-runtime-hook can read native hook payloads from stdin", () => {
     ),
   );
   assert.equal(cliSecond.hookSpecificOutput.hookEventName, "UserPromptSubmit");
-  assert.match(cliSecond.hookSpecificOutput.additionalContext, /fxxks pre-read reused/);
+  assert.match(cliSecond.hookSpecificOutput.additionalContext, /fxxks: reused pre-read \(compressed\)/);
 });
 
 test("scan indexes component and qualifying linked ts but excludes generic utils", () => {
