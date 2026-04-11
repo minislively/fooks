@@ -16,9 +16,8 @@ const fixtureCopies = [
 function makeBenchmarkProject(copyCount = 20) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-bench-"));
   fs.mkdirSync(path.join(tempDir, "src", "components"), { recursive: true });
-  fs.mkdirSync(path.join(tempDir, "src", "ts-linked"), { recursive: true });
 
-  fs.copyFileSync(path.join(repoRoot, "fixtures", "ts-linked", "Button.types.ts"), path.join(tempDir, "src", "ts-linked", "Button.types.ts"));
+  fs.copyFileSync(path.join(repoRoot, "fixtures", "compressed", "Button.types.ts"), path.join(tempDir, "src", "components", "Button.types.ts"));
   fs.writeFileSync(
     path.join(tempDir, "package.json"),
     JSON.stringify(
@@ -36,9 +35,9 @@ function makeBenchmarkProject(copyCount = 20) {
       let source = fs.readFileSync(path.join(repoRoot, fixturePath), "utf8");
       if (componentName === "FormSection") {
         const utilBaseName = `FormSection${index}.utils`;
-        source = source.replace("../ts-linked/FormSection.utils", `../ts-linked/${utilBaseName}`);
-        const utilSource = `${fs.readFileSync(path.join(repoRoot, "fixtures", "ts-linked", "FormSection.utils.ts"), "utf8").trimEnd()}\n// benchmark-util-copy:${index}\n`;
-        fs.writeFileSync(path.join(tempDir, "src", "ts-linked", `${utilBaseName}.ts`), utilSource);
+        source = source.replace("./FormSection.utils", `./${utilBaseName}`);
+        const utilSource = `${fs.readFileSync(path.join(repoRoot, "fixtures", "compressed", "FormSection.utils.ts"), "utf8").trimEnd()}\n// benchmark-util-copy:${index}\n`;
+        fs.writeFileSync(path.join(tempDir, "src", "components", `${utilBaseName}.ts`), utilSource);
       }
 
       const uniqueSource = `${source.trimEnd()}\n// benchmark-component-copy:${index}\n`;

@@ -68,6 +68,9 @@ function relativeImports(filePath: string): RelativeImport[] {
 }
 
 function isQualifyingLinkedTs(filePath: string, componentFile: string, isTypeOnly: boolean): boolean {
+  if (path.dirname(filePath) !== path.dirname(componentFile)) {
+    return false;
+  }
   if (isTypeOnly) return true;
   const base = path.basename(filePath).toLowerCase();
   const componentStem = path.basename(componentFile, path.extname(componentFile)).toLowerCase();

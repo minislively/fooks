@@ -1,5 +1,6 @@
 export type OutputMode = "raw" | "compressed" | "hybrid";
 export type Language = "tsx" | "jsx" | "ts";
+export type DecisionConfidence = "high" | "medium" | "low";
 export type StyleSystem =
   | "tailwind"
   | "css-modules"
@@ -53,6 +54,7 @@ export type ExtractionResult = {
     complexityScore?: number;
     generatedAt: string;
     decideReason?: string[];
+    decideConfidence?: DecisionConfidence;
   };
 };
 
@@ -109,6 +111,7 @@ export type CodexPreReadDecision = {
     mode?: ExtractionResult["mode"];
     complexityScore?: number;
     decideReason?: string[];
+    decideConfidence?: DecisionConfidence;
     language?: ExtractionResult["language"];
   };
   fallback?: {
@@ -164,6 +167,9 @@ export type IndexEntry = {
   hooks: string[];
   styleSystem: StyleSystem;
   mode: OutputMode;
+  complexityScore?: number;
+  decideReason?: string[];
+  decideConfidence?: DecisionConfidence;
   kind: "component" | "linked-ts";
 };
 

@@ -1,6 +1,6 @@
 import React from "react";
-import { ButtonFieldProps } from "../ts-linked/Button.types";
-import { fallbackFooterText } from "../ts-linked/FormSection.utils";
+import { ButtonFieldProps } from "./Button.types";
+import { fallbackFooterText } from "./FormSection.utils";
 
 type FormSectionProps = {
   title: string;

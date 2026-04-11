@@ -16,7 +16,7 @@ Local frontend-only context compression engine for React/TSX files.
 Phase 1 is intentionally narrow:
 
 - React / TSX / JSX focused
-- directly linked `.ts` types, props, and component-scoped utils only
+- same-folder linked `.ts` only (`type` imports, props/interface/type aliases, adjacent util/helper files)
 - local scan / extract / decide / attach flow
 - runtime-agnostic core schema with thin adapters
 

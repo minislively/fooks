@@ -1,10 +1,80 @@
-import type { ExtractionResult, OutputMode } from "./schema";
+import type { DecisionConfidence, ExtractionResult, OutputMode } from "./schema";
 
 export type DecideMetrics = {
   mode: OutputMode;
   complexityScore: number;
   reasons: string[];
+  confidence: DecisionConfidence;
 };
+
+function confidenceForRaw(
+  lineCount: number,
+  jsxDepth: number,
+  conditionalCount: number,
+  hookCount: number,
+  handlerCount: number,
+  styleBranching: number,
+): DecisionConfidence {
+  const decisivelySmall =
+    lineCount <= 28 &&
+    jsxDepth <= 2 &&
+    conditionalCount === 0 &&
+    hookCount === 0 &&
+    handlerCount <= 1 &&
+    styleBranching === 0;
+  if (decisivelySmall) {
+    return "high";
+  }
+
+  const nearBoundary =
+    lineCount >= 40 || jsxDepth >= 3 || conditionalCount >= 2 || hookCount === 1 || handlerCount >= 2;
+  return nearBoundary ? "medium" : "high";
+}
+
+function confidenceForHybrid(
+  lineCount: number,
+  conditionalCount: number,
+  repeatedCount: number,
+  hookCount: number,
+  handlerCount: number,
+  styleBranching: number,
+  importCount: number,
+): DecisionConfidence {
+  const strongSignalCount = [
+    conditionalCount >= 2,
+    repeatedCount >= 1,
+    hookCount >= 3,
+    handlerCount >= 3,
+    styleBranching === 1,
+    importCount >= 8,
+    lineCount >= 120,
+  ].filter(Boolean).length;
+
+  if (strongSignalCount >= 3) {
+    return "high";
+  }
+
+  return strongSignalCount >= 2 ? "medium" : "low";
+}
+
+function confidenceForCompressed(
+  lineCount: number,
+  jsxDepth: number,
+  conditionalCount: number,
+  hookCount: number,
+  handlerCount: number,
+  styleBranching: number,
+  importCount: number,
+): DecisionConfidence {
+  const nearRawBoundary = lineCount <= 55 && jsxDepth <= 4 && conditionalCount <= 1 && hookCount <= 1 && handlerCount <= 2 && styleBranching === 0;
+  const nearHybridBoundary = conditionalCount === 1 || hookCount === 2 || handlerCount === 2 || styleBranching === 1 || importCount >= 8 || lineCount >= 100;
+
+  if (!nearRawBoundary && !nearHybridBoundary) {
+    return "high";
+  }
+
+  return nearRawBoundary && nearHybridBoundary ? "low" : "medium";
+}
 
 export function decideMode(base: Omit<ExtractionResult, "mode">): DecideMetrics {
   const lineCount = base.meta.lineCount;
@@ -41,12 +111,27 @@ export function decideMode(base: Omit<ExtractionResult, "mode">): DecideMetrics 
   const isHybridCandidate = conditionalCount >= 2 || handlerCount >= 3 || hookCount >= 3 || styleBranching === 1;
 
   if (isRawCandidate) {
-    return { mode: "raw", complexityScore, reasons };
+    return {
+      mode: "raw",
+      complexityScore,
+      reasons,
+      confidence: confidenceForRaw(lineCount, jsxDepth, conditionalCount, hookCount, handlerCount, styleBranching),
+    };
   }
 
   if (isHybridCandidate) {
-    return { mode: "hybrid", complexityScore, reasons };
+    return {
+      mode: "hybrid",
+      complexityScore,
+      reasons,
+      confidence: confidenceForHybrid(lineCount, conditionalCount, repeatedCount, hookCount, handlerCount, styleBranching, importCount),
+    };
   }
 
-  return { mode: "compressed", complexityScore, reasons };
+  return {
+    mode: "compressed",
+    complexityScore,
+    reasons,
+    confidence: confidenceForCompressed(lineCount, jsxDepth, conditionalCount, hookCount, handlerCount, styleBranching, importCount),
+  };
 }

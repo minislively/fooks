@@ -43,13 +43,25 @@ function runTextWithInput(args, input, cwd = repoRoot, envOverrides = {}) {
 function makeTempProject(repositoryUrl = "https://github.com/minislively/temp-project.git") {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-"));
   fs.mkdirSync(path.join(tempDir, "src", "components"), { recursive: true });
-  fs.mkdirSync(path.join(tempDir, "src", "ts-linked"), { recursive: true });
   fs.copyFileSync(path.join(repoRoot, "fixtures", "raw", "SimpleButton.tsx"), path.join(tempDir, "src", "components", "SimpleButton.tsx"));
+  fs.copyFileSync(path.join(repoRoot, "fixtures", "raw", "Button.types.ts"), path.join(tempDir, "src", "components", "Button.types.ts"));
   fs.copyFileSync(path.join(repoRoot, "fixtures", "compressed", "FormSection.tsx"), path.join(tempDir, "src", "components", "FormSection.tsx"));
+  fs.copyFileSync(path.join(repoRoot, "fixtures", "compressed", "Button.types.ts"), path.join(tempDir, "src", "components", "Button.types.ts"));
+  fs.copyFileSync(path.join(repoRoot, "fixtures", "compressed", "FormSection.utils.ts"), path.join(tempDir, "src", "components", "FormSection.utils.ts"));
   fs.copyFileSync(path.join(repoRoot, "fixtures", "hybrid", "DashboardPanel.tsx"), path.join(tempDir, "src", "components", "DashboardPanel.tsx"));
-  fs.copyFileSync(path.join(repoRoot, "fixtures", "ts-linked", "Button.types.ts"), path.join(tempDir, "src", "ts-linked", "Button.types.ts"));
-  fs.copyFileSync(path.join(repoRoot, "fixtures", "ts-linked", "FormSection.utils.ts"), path.join(tempDir, "src", "ts-linked", "FormSection.utils.ts"));
   fs.writeFileSync(path.join(tempDir, "src", "date-utils.ts"), "export const formatDate = (value) => value.toISOString();\n");
+  fs.writeFileSync(
+    path.join(tempDir, "src", "components", "DateBadge.tsx"),
+    [
+      'import React from "react";',
+      'import { formatDate } from "../date-utils";',
+      "",
+      "export function DateBadge({ value }: { value: Date }) {",
+      '  return <span>{formatDate(value)}</span>;',
+      "}",
+      "",
+    ].join("\n"),
+  );
   fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "temp-project", repository: { url: repositoryUrl } }, null, 2));
   return tempDir;
 }
@@ -106,6 +118,7 @@ test("extract keeps small fixture raw", () => {
   assert.ok(result.rawText.includes("button"));
   assert.ok(result.fileHash);
   assert.ok(result.meta.generatedAt);
+  assert.equal(result.meta.decideConfidence, "high");
   assert.ok(result.contract.propsSummary.some((item) => item.includes("label")));
   assert.ok(result.style.summary.some((item) => item.includes("tailwind")));
 });
@@ -128,6 +141,7 @@ test("extract can return model-facing payload without engine metadata", () => {
 test("extract produces compressed output for boilerplate-heavy fixture", () => {
   const result = run(["extract", "fixtures/compressed/FormSection.tsx"]);
   assert.equal(result.mode, "compressed");
+  assert.ok(["medium", "high"].includes(result.meta.decideConfidence));
   assert.equal(result.style.system, "tailwind");
   assert.ok(result.structure.repeatedBlocks.includes("array-map-render"));
   assert.equal(result.rawText, undefined);
@@ -136,6 +150,7 @@ test("extract produces compressed output for boilerplate-heavy fixture", () => {
 test("extract produces hybrid output for complex fixture", () => {
   const result = run(["extract", "fixtures/hybrid/DashboardPanel.tsx"]);
   assert.equal(result.mode, "hybrid");
+  assert.ok(["medium", "high"].includes(result.meta.decideConfidence));
   assert.ok(result.behavior.hooks.includes("useState"));
   assert.ok(result.behavior.eventHandlers.includes("handleAcknowledge"));
   assert.ok(result.snippets.length >= 1);
@@ -190,10 +205,12 @@ test("codex pre-read chooses payload for eligible tsx/jsx and fallback otherwise
   assert.equal(compressed.decision, "payload");
   assert.equal(compressed.filePath, path.join("fixtures", "compressed", "FormSection.tsx"));
   assert.ok(compressed.payload);
+  assert.ok(["low", "medium", "high"].includes(compressed.debug.decideConfidence));
 
   const hybrid = decideCodexPreRead(path.join(repoRoot, "fixtures", "hybrid", "DashboardPanel.tsx"), repoRoot);
   assert.equal(hybrid.decision, "payload");
   assert.ok(hybrid.payload.snippets?.length);
+  assert.ok(["medium", "high"].includes(hybrid.debug.decideConfidence));
 
   const jsx = decideCodexPreRead(path.join(repoRoot, "fixtures", "jsx", "SimpleWidget.jsx"), repoRoot);
   assert.equal(jsx.eligible, true);
@@ -579,14 +596,27 @@ test("scan indexes component and qualifying linked ts but excludes generic utils
   const result = run(["scan"], tempDir);
   const filePaths = result.files.map((item) => item.filePath).sort();
   assert.ok(filePaths.includes(path.join("src", "components", "SimpleButton.tsx")));
-  assert.ok(filePaths.includes(path.join("src", "ts-linked", "Button.types.ts")));
-  assert.ok(filePaths.includes(path.join("src", "ts-linked", "FormSection.utils.ts")));
+  assert.ok(filePaths.includes(path.join("src", "components", "Button.types.ts")));
+  assert.ok(filePaths.includes(path.join("src", "components", "FormSection.utils.ts")));
   assert.ok(!filePaths.includes(path.join("src", "date-utils.ts")));
   assert.ok(fs.existsSync(path.join(tempDir, ".fe-lens", "index.json")));
   assert.ok(result.refreshedEntries >= 5);
+  const formSectionEntry = result.files.find((item) => item.filePath === path.join("src", "components", "FormSection.tsx"));
+  assert.ok(formSectionEntry);
+  assert.equal(typeof formSectionEntry.complexityScore, "number");
+  assert.ok(Array.isArray(formSectionEntry.decideReason));
+  assert.ok(["low", "medium", "high"].includes(formSectionEntry.decideConfidence));
 
   const secondRun = run(["scan"], tempDir);
   assert.ok(secondRun.reusedCacheEntries >= 5);
+});
+
+test("scan excludes cross-folder linked ts even when directly imported", () => {
+  const tempDir = makeTempProject();
+  const result = run(["scan"], tempDir);
+  const filePaths = result.files.map((item) => item.filePath);
+  assert.ok(filePaths.includes(path.join("src", "components", "DateBadge.tsx")));
+  assert.ok(!filePaths.includes(path.join("src", "date-utils.ts")));
 });
 
 test("scan only refreshes changed files after cache warm-up", () => {

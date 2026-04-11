@@ -320,7 +320,7 @@ export function extractFile(filePath: string): ExtractionResult {
     },
   };
 
-  const { mode, complexityScore, reasons } = decideMode(base);
+  const { mode, complexityScore, reasons, confidence } = decideMode(base);
   const result: ExtractionResult = {
     ...base,
     mode,
@@ -330,6 +330,7 @@ export function extractFile(filePath: string): ExtractionResult {
       ...base.meta,
       complexityScore,
       decideReason: reasons,
+      decideConfidence: confidence,
     },
   };
   return result;

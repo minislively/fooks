@@ -1,5 +1,5 @@
 import React from "react";
-import type { ButtonVariant } from "../ts-linked/Button.types";
+import type { ButtonVariant } from "./Button.types";
 
 type SimpleButtonProps = {
   label: string;

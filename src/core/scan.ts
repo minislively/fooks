@@ -33,6 +33,9 @@ export function scanProject(cwd = process.cwd()): ScanResult {
       hooks: extracted.behavior?.hooks ?? [],
       styleSystem: extracted.style?.system ?? "unknown",
       mode: extracted.mode,
+      complexityScore: extracted.meta.complexityScore,
+      decideReason: extracted.meta.decideReason,
+      decideConfidence: extracted.meta.decideConfidence,
       kind: target.kind,
     });
   }

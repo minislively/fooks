@@ -38,6 +38,7 @@ export function decideCodexPreRead(filePath: string, cwd = process.cwd()): Codex
     mode: result.mode,
     complexityScore: result.meta.complexityScore,
     decideReason: result.meta.decideReason,
+    decideConfidence: result.meta.decideConfidence,
     language: result.language,
   };
 
