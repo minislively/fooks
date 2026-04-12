@@ -23,7 +23,8 @@ Current `fxxks` commit at capture time: `8f54360`
 ### Task A — QuestionAnswerForm same-file repeated edit loop
 - Repo: `ai-job-finder`
 - Target file: `components/QuestionAnswerForm.tsx`
-- Task type: repeated same-file UI/state edit guidance
+- Task type: repeated same-file UI/state edit
+- Requested change: add live character counts under the custom question and answer inputs
 - Initial mode: `hybrid`
 - Decision reason:
   - `multiple-conditionals`
@@ -33,15 +34,21 @@ Current `fxxks` commit at capture time: `8f54360`
   - `long-file`
 - Confidence: `high`
 - Linked context used: none (same-file only)
-- Fallback: not required for normal turns; escape hatch verified separately
-- Build/test status: `not-tested` (no fast task-specific test script; full build not run against an edit yet)
-- Reviewer outcome: partial evidence only
+- Fallback: not required for the edit path; `#fxxks-full-read` escape hatch still verified separately
+- Build/test status:
+  - `build`: passed (`next build`)
+  - `lint`: passed with pre-existing warnings only (`Separator`, `cn`, `jobId`, unrelated warnings in other files)
+  - `test`: `not-tested` (repo has no dedicated test script)
+- Reviewer outcome: success
 - Current evidence:
   - model-facing payload retained contract/behavior/structure/snippets
   - payload bytes: `3356 -> 2733` (~18.6% reduction)
   - repeated Codex guidance stayed coherent across 3 turns
-  - `#fxxks-full-read` escape hatch worked
-- Status: **needs a real code edit + review outcome to count as a full Phase 2A task**
+  - edit applied in the expected JSX blocks without adding unnecessary state
+  - resulting diff only adds two count labels below the existing `Input`/`Textarea`
+  - `#fxxks-full-read` escape hatch worked when requested
+- Failure summary: none observed for this task
+- Status: **successful Phase 2A validation task**
 
 ### Task B — ApplicationPacket edit candidate
 - Repo: `ai-job-finder`
