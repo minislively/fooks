@@ -79,6 +79,24 @@ Current `fxxks` commit at capture time: `8f54360`
 - Failure summary: none observed for this task
 - Status: **successful Phase 2A validation task**
 
+### Task C — linked-context candidate discovery (evidence gap)
+- Scope searched:
+  - `/Users/veluga/Documents/Workspace_Minseol/ai-job-finder`
+  - `/Users/veluga/Documents/Workspace_Minseol/ai-subsidy-job-finder`
+  - `/Users/veluga/Documents/Workspace_Minseol/portfolio`
+- Search rule:
+  - `.tsx/.jsx` importing same-folder `.ts` files that match the current allowlist (`.types/.props/.interface/.config/.util/.utils/.helper/.helpers` or `type`-only imports)
+- Result:
+  - no qualifying linked `.ts` edit candidate found in those active app repos
+- Additional probe:
+  - `/Users/veluga/Documents/Workspace_Minseol/hyperflow/packages/react/src/react.tsx` imports same-folder `./starter`
+  - current `fxxks scan` does **not** index `starter.ts` as linked context because it is outside the current bounded allowlist
+- Interpretation:
+  - the bounded linked `.ts` policy remains conservative in practice
+  - we do not yet have a successful real edit task that exercises linked `.ts` inclusion inside the current allowlist
+  - the nearest concrete future case is a same-folder helper/config file, but widening beyond the allowlist still requires an explicit failure case
+- Status: **open evidence gap; no scope widening justified yet**
+
 ## Immediate next step
 Run 2–3 real edit tasks in `ai-job-finder` and log, for each:
 1. requested change
