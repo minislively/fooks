@@ -17,3 +17,4 @@ export {
 } from "./adapters/codex-runtime-session";
 export { handleCodexRuntimeHook } from "./adapters/codex-runtime-hook";
 export { handleCodexNativeHookPayload } from "./adapters/codex-native-hook";
+export { installCodexHookPreset } from "./adapters/codex-hook-preset";

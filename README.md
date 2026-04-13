@@ -31,6 +31,7 @@ fxxks decide <file>
 fxxks codex-pre-read <file>
 fxxks codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop>
 fxxks codex-runtime-hook --native-hook
+fxxks install codex-hooks
 fxxks attach codex
 fxxks attach claude
 ```
@@ -152,7 +153,15 @@ For Codex native hook wiring, the repo-side bridge can also read the hook payloa
 fxxks codex-runtime-hook --native-hook
 ```
 
-Recommended `~/.codex/hooks.json` addition:
+Preferred install path (writes or merges the Codex hook preset into `~/.codex/hooks.json`):
+
+```bash
+fxxks install codex-hooks
+```
+
+The installer is idempotent: it only adds the `fxxks codex-runtime-hook --native-hook` command to `SessionStart`, `UserPromptSubmit`, and `Stop` when those entries are missing, and preserves other hooks already present in `~/.codex/hooks.json`.
+
+If you prefer to edit the file manually, add this preset:
 
 ```json
 {

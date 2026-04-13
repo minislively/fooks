@@ -669,6 +669,51 @@ test("model-facing payload trim hits >=15% reduction on at least two compressed/
   }
 });
 
+
+
+test("install codex-hooks creates a reusable hooks preset", () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
+  const result = run(["install", "codex-hooks"], repoRoot, { FE_LENS_CODEX_HOME: codexHome });
+  assert.equal(result.created, true);
+  assert.equal(result.modified, true);
+  assert.deepEqual(result.installedEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
+  const hooks = JSON.parse(fs.readFileSync(path.join(codexHome, "hooks.json"), "utf8"));
+  assert.equal(hooks.hooks.SessionStart[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
+  assert.equal(hooks.hooks.UserPromptSubmit[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
+  assert.equal(hooks.hooks.Stop[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
+});
+
+test("install codex-hooks merges without clobbering existing hooks and stays idempotent", () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
+  const hooksPath = path.join(codexHome, "hooks.json");
+  fs.writeFileSync(hooksPath, JSON.stringify({
+    hooks: {
+      SessionStart: [{ matcher: "startup|resume", hooks: [{ type: "command", command: "node /tmp/omx-start.js", statusMessage: "Loading OMX session context" }] }],
+      UserPromptSubmit: [{ hooks: [{ type: "command", command: "node /tmp/omx.js", statusMessage: "Applying OMX prompt routing" }] }],
+      Stop: [{ hooks: [{ type: "command", command: "node /tmp/omx-stop.js" }] }],
+    },
+  }, null, 2));
+
+  const first = run(["install", "codex-hooks"], repoRoot, { FE_LENS_CODEX_HOME: codexHome });
+  assert.equal(first.created, false);
+  assert.equal(first.modified, true);
+  assert.equal(first.installedEvents.length, 3);
+  assert.ok(first.backupPath);
+
+  const merged = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
+  assert.equal(merged.hooks.SessionStart.length, 2);
+  assert.equal(merged.hooks.SessionStart[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
+  assert.equal(merged.hooks.SessionStart[1].hooks[0].command, "node /tmp/omx-start.js");
+  assert.equal(merged.hooks.UserPromptSubmit[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
+  assert.equal(merged.hooks.UserPromptSubmit[1].hooks[0].command, "node /tmp/omx.js");
+  assert.equal(merged.hooks.Stop[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
+  assert.equal(merged.hooks.Stop[1].hooks[0].command, "node /tmp/omx-stop.js");
+
+  const second = run(["install", "codex-hooks"], repoRoot, { FE_LENS_CODEX_HOME: codexHome });
+  assert.equal(second.modified, false);
+  assert.deepEqual(second.skippedEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
+});
+
 test("attach codex proves contract and runtime under minislively account context", () => {
   const tempDir = makeTempProject();
   const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
