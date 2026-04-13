@@ -92,7 +92,7 @@ export function writeAdapterFiles(runtime: "codex" | "claude", cwd = process.cwd
     path.join(dir, "context-template.md"),
   ];
   fs.writeFileSync(files[0], JSON.stringify({ runtime, installedAt: new Date().toISOString() }, null, 2));
-  fs.writeFileSync(files[1], `# ${runtime} adapter\n\nUse fxxks output as pre-read context before opening the full source file.\n`);
+  fs.writeFileSync(files[1], `# ${runtime} adapter\n\nUse fooks output as pre-read context before opening the full source file.\n`);
   return files;
 }
 

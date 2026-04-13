@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ELIGIBLE_EXTENSIONS = new Set([".tsx", ".jsx"]);
-const ESCAPE_HATCH_TOKENS = ["#fxxks-full-read", "#fxxks-disable-pre-read"] as const;
+const ESCAPE_HATCH_TOKENS = ["#fooks-full-read", "#fooks-disable-pre-read", "#fxxks-full-read", "#fxxks-disable-pre-read"] as const;
 const FILE_TOKEN_PATTERN = /(?:[A-Za-z]:)?[A-Za-z0-9_./\\-]+\.(?:tsx|jsx)\b/g;
 
 function trimPromptToken(token: string): string {

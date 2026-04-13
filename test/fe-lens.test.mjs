@@ -263,6 +263,8 @@ test("runtime prompt parser finds eligible tsx/jsx paths and escape hatches", ()
   const tsTarget = extractPromptTarget("Check fixtures/ts-linked/Button.types.ts too", repoRoot);
   assert.equal(tsTarget, null);
 
+  assert.equal(hasFullReadEscapeHatch("Need exact source #fooks-full-read"), true);
+  assert.equal(hasFullReadEscapeHatch("Need exact source #fooks-disable-pre-read"), true);
   assert.equal(hasFullReadEscapeHatch("Need exact source #fxxks-full-read"), true);
   assert.equal(hasFullReadEscapeHatch("Need exact source #fxxks-disable-pre-read"), true);
   assert.equal(hasFullReadEscapeHatch("No override here"), false);
@@ -298,10 +300,10 @@ test("runtime hook reuses payload only on repeated same-file prompts in one sess
   assert.equal(second.filePath, path.join("fixtures", "compressed", "FormSection.tsx"));
   assert.ok(
     second.additionalContext.startsWith(
-      `fxxks: reused pre-read (compressed) · file: ${path.join("fixtures", "compressed", "FormSection.tsx")}`,
+      `fooks: reused pre-read (compressed) · file: ${path.join("fixtures", "compressed", "FormSection.tsx")}`,
     ),
   );
-  assert.ok(second.additionalContext.includes("#fxxks-full-read"));
+  assert.ok(second.additionalContext.includes("#fooks-full-read"));
   assert.equal(second.debug.repeatedFile, true);
 });
 
@@ -334,7 +336,7 @@ test("runtime hook falls back for escape hatch and raw readiness failures", () =
     {
       hookEventName: "UserPromptSubmit",
       sessionId: overrideSession,
-      prompt: "Please inspect fixtures/compressed/FormSection.tsx #fxxks-full-read",
+      prompt: "Please inspect fixtures/compressed/FormSection.tsx #fooks-full-read",
     },
     repoRoot,
   );
@@ -577,7 +579,7 @@ test("native hook bridge only activates inside attached codex projects", () => {
   assert.equal(second.hookSpecificOutput.hookEventName, "UserPromptSubmit");
   assert.match(
     second.hookSpecificOutput.additionalContext,
-    /fxxks: reused pre-read \(compressed\) · file: src\/components\/FormSection\.tsx/,
+    /fooks: reused pre-read \(compressed\) · file: src\/components\/FormSection\.tsx/,
   );
 });
 
@@ -607,7 +609,7 @@ test("native hook bridge emits full-read guidance for repeated fallback cases", 
   assert.equal(fallback.hookSpecificOutput.hookEventName, "UserPromptSubmit");
   assert.match(
     fallback.hookSpecificOutput.additionalContext,
-    /fxxks: fallback \(raw-mode\) · file: src\/components\/SimpleButton\.tsx · Read the full source file for this turn\./,
+    /fooks: fallback \(raw-mode\) · file: src\/components\/SimpleButton\.tsx · Read the full source file for this turn\./,
   );
 });
 
@@ -619,7 +621,7 @@ test("native hook bridge uses fixed full-read status vocabulary for escape hatch
     {
       hook_event_name: "UserPromptSubmit",
       cwd: attachedDir,
-      prompt: "Need exact source src/components/FormSection.tsx #fxxks-full-read",
+      prompt: "Need exact source src/components/FormSection.tsx #fooks-full-read",
       session_id: `native-escape-${Date.now()}`,
     },
     attachedDir,
@@ -627,7 +629,7 @@ test("native hook bridge uses fixed full-read status vocabulary for escape hatch
   assert.equal(overridden.hookSpecificOutput.hookEventName, "UserPromptSubmit");
   assert.match(
     overridden.hookSpecificOutput.additionalContext,
-    /^fxxks: full read requested · file: src\/components\/FormSection\.tsx · Read the full source file for this turn\.$/,
+    /^fooks: full read requested · file: src\/components\/FormSection\.tsx · Read the full source file for this turn\.$/,
   );
   assert.doesNotMatch(overridden.hookSpecificOutput.additionalContext, /fallback \(/);
 });
@@ -662,7 +664,7 @@ test("cli codex-runtime-hook can read native hook payloads from stdin", () => {
   assert.equal(cliSecond.hookSpecificOutput.hookEventName, "UserPromptSubmit");
   assert.match(
     cliSecond.hookSpecificOutput.additionalContext,
-    /fxxks: reused pre-read \(compressed\) · file: src\/components\/FormSection\.tsx/,
+    /fooks: reused pre-read \(compressed\) · file: src\/components\/FormSection\.tsx/,
   );
 });
 
@@ -753,9 +755,9 @@ test("install codex-hooks creates a reusable hooks preset", () => {
   assert.equal(result.modified, true);
   assert.deepEqual(result.installedEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
   const hooks = JSON.parse(fs.readFileSync(path.join(codexHome, "hooks.json"), "utf8"));
-  assert.equal(hooks.hooks.SessionStart[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
-  assert.equal(hooks.hooks.UserPromptSubmit[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
-  assert.equal(hooks.hooks.Stop[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
+  assert.equal(hooks.hooks.SessionStart[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
+  assert.equal(hooks.hooks.UserPromptSubmit[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
+  assert.equal(hooks.hooks.Stop[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
 });
 
 test("install codex-hooks merges without clobbering existing hooks and stays idempotent", () => {
@@ -777,11 +779,11 @@ test("install codex-hooks merges without clobbering existing hooks and stays ide
 
   const merged = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
   assert.equal(merged.hooks.SessionStart.length, 2);
-  assert.equal(merged.hooks.SessionStart[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
+  assert.equal(merged.hooks.SessionStart[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
   assert.equal(merged.hooks.SessionStart[1].hooks[0].command, "node /tmp/omx-start.js");
-  assert.equal(merged.hooks.UserPromptSubmit[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
+  assert.equal(merged.hooks.UserPromptSubmit[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
   assert.equal(merged.hooks.UserPromptSubmit[1].hooks[0].command, "node /tmp/omx.js");
-  assert.equal(merged.hooks.Stop[0].hooks[0].command, "fxxks codex-runtime-hook --native-hook");
+  assert.equal(merged.hooks.Stop[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
   assert.equal(merged.hooks.Stop[1].hooks[0].command, "node /tmp/omx-stop.js");
 
   const second = run(["install", "codex-hooks"], repoRoot, { FE_LENS_CODEX_HOME: codexHome });
@@ -803,9 +805,9 @@ test("attach codex proves contract and runtime under minislively account context
   assert.ok(result.runtimeProof.details.some((item) => item.includes("account-source=")));
   assert.ok(fs.existsSync(runtimeManifestPath(result)));
   const runtimeManifest = JSON.parse(fs.readFileSync(runtimeManifestPath(result), "utf8"));
-  assert.equal(runtimeManifest.runtimeBridge.command, "fxxks codex-runtime-hook --native-hook");
+  assert.equal(runtimeManifest.runtimeBridge.command, "fooks codex-runtime-hook --native-hook");
   assert.deepEqual(runtimeManifest.runtimeBridge.supportedHookEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
-  assert.ok(runtimeManifest.runtimeBridge.escapeHatches.includes("#fxxks-full-read"));
+  assert.ok(runtimeManifest.runtimeBridge.escapeHatches.includes("#fxxks-full-read") && runtimeManifest.runtimeBridge.escapeHatches.includes("#fooks-full-read"));
   assert.equal(result.trustStatus.connectionState, "connected");
   assert.equal(result.trustStatus.lifecycleState, "ready");
   assert.ok(result.trustStatus.lastScanAt);

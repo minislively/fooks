@@ -1,9 +1,10 @@
 {
-  "name": "fxxks",
+  "name": "fooks",
   "version": "0.1.0",
   "private": true,
   "type": "commonjs",
   "bin": {
+    "fooks": "dist/cli/index.js",
     "fxxks": "dist/cli/index.js",
     "fe-lens": "dist/cli/index.js"
   },
@@ -19,17 +20,17 @@
     "@types/node": "^24.5.2",
     "typescript": "^5.9.2"
   },
-  "description": "fxxks repository containing the Phase 1 frontend context compression engine for React/TSX.",
+  "description": "fooks repository containing the frontend context compression engine for React/TSX.",
   "main": "dist/index.js",
   "files": [
     "dist"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/minislively/fxxks.git"
+    "url": "git+https://github.com/minislively/fooks.git"
   },
   "bugs": {
-    "url": "https://github.com/minislively/fxxks/issues"
+    "url": "https://github.com/minislively/fooks/issues"
   },
-  "homepage": "https://github.com/minislively/fxxks#readme"
+  "homepage": "https://github.com/minislively/fooks#readme"
 }

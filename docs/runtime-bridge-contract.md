@@ -82,9 +82,9 @@ harnesses:
 
 When the bridge chooses to surface status text, keep it short and fixed:
 
-- `fxxks: reused pre-read (<mode>)`
-- `fxxks: fallback (<reason>)`
-- `fxxks: full read requested`
+- `fooks: reused pre-read (<mode>)`
+- `fooks: fallback (<reason>)`
+- `fooks: full read requested`
 
 The current Codex hook renderer may flatten line breaks, so status headers
 should stay as one-line summaries.
@@ -93,8 +93,8 @@ should stay as one-line summaries.
 
 The current override markers are part of the bridge contract:
 
-- `#fxxks-full-read`
-- `#fxxks-disable-pre-read`
+- `#fooks-full-read`
+- `#fooks-disable-pre-read`
 
 Any future OMC/OMX bridge should preserve equivalent semantics.
 
@@ -112,7 +112,7 @@ Future harnesses should prove the same three scenarios:
    - reason token remains stable
 
 3. **Escape hatch → full read requested**
-   - any prompt with `#fxxks-full-read` or `#fxxks-disable-pre-read`
+   - any prompt with `#fooks-full-read` or `#fooks-disable-pre-read`
    - immediate `fallback`
    - user-facing status uses the fixed override vocabulary
 

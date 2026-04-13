@@ -1,13 +1,13 @@
-# fxxks
+# fooks
 
-Product / repo / package / primary CLI name: `fxxks`  
-Legacy Phase 1 alias: `fe-lens`
+Product / package / primary CLI name: `fooks`
+Compatibility aliases: `fxxks`, `fe-lens`
 
 Local frontend-only context compression engine for React/TSX files.
 
 ## What it does
 
-`fxxks` reduces AI read cost before a coding runtime opens full frontend source by returning one of:
+`fooks` reduces AI read cost before a coding runtime opens full frontend source by returning one of:
 
 - `raw`
 - `compressed`
@@ -23,21 +23,21 @@ Phase 1 is intentionally narrow:
 ## Commands
 
 ```bash
-fxxks init
-fxxks scan
-fxxks extract <file> --json
-fxxks extract <file> --model-payload
-fxxks decide <file>
-fxxks codex-pre-read <file>
-fxxks codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop>
-fxxks codex-runtime-hook --native-hook
-fxxks install codex-hooks
-fxxks status codex
-fxxks attach codex
-fxxks attach claude
+fooks init
+fooks scan
+fooks extract <file> --json
+fooks extract <file> --model-payload
+fooks decide <file>
+fooks codex-pre-read <file>
+fooks codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop>
+fooks codex-runtime-hook --native-hook
+fooks install codex-hooks
+fooks status codex
+fooks attach codex
+fooks attach claude
 ```
 
-Early Phase 1 drafts may still refer to `fe-lens`. The shipping product name is `fxxks`, while `fe-lens` remains as a compatibility CLI alias and for existing internal path/env contracts.
+Early Phase 1 drafts may still refer to `fe-lens`. The shipping product name is `fooks`, while `fxxks` and `fe-lens` remain as compatibility CLI aliases and for existing internal path/env contracts.
 
 ## Account context
 
@@ -83,7 +83,7 @@ Current Phase 1 verification:
 `extract` keeps the canonical extraction output by default. For a leaner LLM-delivery view:
 
 ```bash
-fxxks extract fixtures/compressed/FormSection.tsx --model-payload
+fooks extract fixtures/compressed/FormSection.tsx --model-payload
 ```
 
 The model-facing payload:
@@ -98,7 +98,7 @@ The model-facing payload:
 The first Codex-specific pre-read seam is exposed as a debug surface:
 
 ```bash
-fxxks codex-pre-read fixtures/compressed/FormSection.tsx
+fooks codex-pre-read fixtures/compressed/FormSection.tsx
 ```
 
 It is intentionally narrow in v1:
@@ -117,7 +117,7 @@ This command proves the decision/debug seam that a future automatic Codex hook c
 
 ## Codex runtime hook bridge
 
-`fxxks` now exposes a first runtime-hook bridge that is grounded in the Codex hook surfaces we can actually verify locally today:
+`fooks` now exposes a first runtime-hook bridge that is grounded in the Codex hook surfaces we can actually verify locally today:
 
 - `SessionStart`
 - `UserPromptSubmit`
@@ -128,44 +128,44 @@ The v1 bridge is intentionally narrow:
 - `.tsx/.jsx` only
 - repeated same-file work in one session
 - quiet by default
-- full-read escape hatch via `#fxxks-full-read` or `#fxxks-disable-pre-read`
-- only active inside repos that already ran `fxxks attach codex`
+- full-read escape hatch via `#fooks-full-read` or `#fooks-disable-pre-read`
+- only active inside repos that already ran `fooks attach codex`
 
 Example debug flow:
 
 ```bash
-fxxks codex-runtime-hook --event SessionStart --session-id demo
-fxxks codex-runtime-hook --event UserPromptSubmit --session-id demo --prompt "Please update fixtures/compressed/FormSection.tsx"
-fxxks codex-runtime-hook --event UserPromptSubmit --session-id demo --prompt "Again, update fixtures/compressed/FormSection.tsx"
+fooks codex-runtime-hook --event SessionStart --session-id demo
+fooks codex-runtime-hook --event UserPromptSubmit --session-id demo --prompt "Please update fixtures/compressed/FormSection.tsx"
+fooks codex-runtime-hook --event UserPromptSubmit --session-id demo --prompt "Again, update fixtures/compressed/FormSection.tsx"
 ```
 
 Expected behavior:
 
 - first prompt mention records the file quietly
-- second prompt mention can reuse `fxxks` pre-read payload and emits a one-line header like `fxxks: reused pre-read (<mode>) · file: <path>`
-- override markers force immediate full-read fallback and emit `fxxks: full read requested · file: <path> · Read the full source file for this turn.`
-- readiness fallback emits `fxxks: fallback (<reason>) · file: <path> · Read the full source file for this turn.`
+- second prompt mention can reuse `fooks` pre-read payload and emits a one-line header like `fooks: reused pre-read (<mode>) · file: <path>`
+- override markers force immediate full-read fallback and emit `fooks: full read requested · file: <path> · Read the full source file for this turn.`
+- readiness fallback emits `fooks: fallback (<reason>) · file: <path> · Read the full source file for this turn.`
 
 This is a **prompt/session bridge**, not a claim that Codex already exposes a universal low-level file-read hook.
 
 For Codex native hook wiring, the repo-side bridge can also read the hook payload from stdin:
 
 ```bash
-fxxks codex-runtime-hook --native-hook
+fooks codex-runtime-hook --native-hook
 ```
 
 Preferred install path (writes or merges the Codex hook preset into `~/.codex/hooks.json`):
 
 ```bash
-fxxks install codex-hooks
+fooks install codex-hooks
 ```
 
-The installer is idempotent: it only adds the `fxxks codex-runtime-hook --native-hook` command to `SessionStart`, `UserPromptSubmit`, and `Stop` when those entries are missing, and preserves other hooks already present in `~/.codex/hooks.json`.
+The installer is idempotent: it only adds the `fooks codex-runtime-hook --native-hook` command to `SessionStart`, `UserPromptSubmit`, and `Stop` when those entries are missing, and preserves other hooks already present in `~/.codex/hooks.json`.
 
 For a lightweight trust/debug surface after attach, inspect the Codex runtime status:
 
 ```bash
-fxxks status codex
+fooks status codex
 ```
 
 This keeps the product UX quiet by default while still exposing the minimum trust signals we care about in Phase 2B:
@@ -190,7 +190,7 @@ If you prefer to edit the file manually, add this preset:
         "hooks": [
           {
             "type": "command",
-            "command": "fxxks codex-runtime-hook --native-hook"
+            "command": "fooks codex-runtime-hook --native-hook"
           }
         ]
       }
@@ -200,7 +200,7 @@ If you prefer to edit the file manually, add this preset:
         "hooks": [
           {
             "type": "command",
-            "command": "fxxks codex-runtime-hook --native-hook"
+            "command": "fooks codex-runtime-hook --native-hook"
           }
         ]
       }
@@ -210,7 +210,7 @@ If you prefer to edit the file manually, add this preset:
         "hooks": [
           {
             "type": "command",
-            "command": "fxxks codex-runtime-hook --native-hook"
+            "command": "fooks codex-runtime-hook --native-hook"
           }
         ]
       }
@@ -219,7 +219,7 @@ If you prefer to edit the file manually, add this preset:
 }
 ```
 
-When the current cwd is not a Codex-attached `fxxks` project, the native hook bridge exits quietly without output.
+When the current cwd is not a Codex-attached `fooks` project, the native hook bridge exits quietly without output.
 
 ## Cache validation
 
@@ -254,3 +254,10 @@ See `docs/real-repo-validation.md`.
 
 - Core logic stays adapter-agnostic.
 - Runtime attach remains environment-dependent by design, but now fails honestly with blocker evidence.
+
+
+Legacy compatibility:
+
+- `fxxks` and `fe-lens` still work as CLI aliases
+- `#fxxks-full-read` and `#fxxks-disable-pre-read` still work as escape hatches
+- internal `.fe-lens/` paths remain unchanged for cache and manifest continuity

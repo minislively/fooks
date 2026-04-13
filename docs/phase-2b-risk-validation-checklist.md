@@ -16,15 +16,15 @@
 대상 repo에서:
 
 ```bash
-fxxks init
-fxxks attach codex
-fxxks install codex-hooks
+fooks init
+fooks attach codex
+fooks install codex-hooks
 ```
 
 상태 확인:
 
 ```bash
-fxxks status codex
+fooks status codex
 ```
 
 기대:
@@ -37,13 +37,13 @@ fxxks status codex
 ## Risk 1 — Trust status usefulness
 
 질문:
-> `fxxks status codex`가 실제로 “지금 붙었는지 / 준비됐는지 / 최근에 갱신됐는지”를 이해하는 데 도움이 되는가?
+> `fooks status codex`가 실제로 “지금 붙었는지 / 준비됐는지 / 최근에 갱신됐는지”를 이해하는 데 도움이 되는가?
 
 ### 시나리오
-1. repo attach 직후 `fxxks status codex`
+1. repo attach 직후 `fooks status codex`
 2. Codex에서 같은 `.tsx/.jsx` 파일 2~3턴 반복 사용
-3. 다시 `fxxks status codex`
-4. `#fxxks-full-read` 1회 사용 후 다시 `fxxks status codex`
+3. 다시 `fooks status codex`
+4. `#fooks-full-read` 1회 사용 후 다시 `fooks status codex`
 
 ### 볼 것
 - `ready` → `attach-prepared` 전환이 납득되는가
@@ -66,7 +66,7 @@ fxxks status codex
 1. 같은 `.tsx/.jsx` 파일을 한 번 작업
 2. 파일을 직접 수정
 3. 같은 파일로 다시 Codex 요청
-4. `fxxks status codex` 확인
+4. `fooks status codex` 확인
 
 ### 볼 것
 - 다음 반복 attach 전에 refresh가 반영되는가
@@ -87,8 +87,8 @@ fxxks status codex
 ### 시나리오
 1. 한 세션에서 파일 A를 2턴 사용
 2. 곧바로 파일 B로 전환
-3. 다시 `fxxks status codex`
-4. 원하면 `#fxxks-full-read`로 파일 B 원문 강제
+3. 다시 `fooks status codex`
+4. 원하면 `#fooks-full-read`로 파일 B 원문 강제
 
 ### 볼 것
 - `activeFile.filePath`가 실제 방금 다룬 파일로 바뀌는가

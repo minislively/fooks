@@ -31,7 +31,7 @@ test("runtime bridge contract keeps repeated-read inject and fallback semantics 
 
   assert.equal(firstInject.action, "record");
   assert.equal(secondInject.action, "inject");
-  assert.match(secondInject.additionalContext, /^fxxks: reused pre-read \(compressed\)/);
+  assert.match(secondInject.additionalContext, /^fooks: reused pre-read \(compressed\)/);
 
   const fallbackSession = `bridge-contract-fallback-${Date.now()}`;
   handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: fallbackSession }, repoRoot);
@@ -63,11 +63,23 @@ test("runtime bridge contract keeps repeated-read inject and fallback semantics 
     {
       hookEventName: "UserPromptSubmit",
       sessionId: overrideSession,
-      prompt: "Need exact source fixtures/compressed/FormSection.tsx #fxxks-full-read",
+      prompt: "Need exact source fixtures/compressed/FormSection.tsx #fooks-full-read",
     },
     repoRoot,
   );
 
   assert.equal(override.action, "fallback");
   assert.equal(override.fallback.reason, "escape-hatch-full-read");
+
+  const legacyOverride = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: overrideSession,
+      prompt: "Need exact source fixtures/compressed/FormSection.tsx #fxxks-full-read",
+    },
+    repoRoot,
+  );
+
+  assert.equal(legacyOverride.action, "fallback");
+  assert.equal(legacyOverride.fallback.reason, "escape-hatch-full-read");
 });

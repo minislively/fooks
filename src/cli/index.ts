@@ -137,7 +137,8 @@ async function readStdinJson(): Promise<Record<string, unknown>> {
 async function run(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   const [arg1] = rest;
-  const cliName = path.basename(process.argv[1] ?? "fxxks");
+  const invokedName = path.basename(process.argv[1] ?? "fooks");
+  const cliName = new Set(["fooks", "fxxks", "fe-lens"]).has(invokedName) ? invokedName : "fooks";
 
   switch (command) {
     case "init": {
@@ -185,7 +186,7 @@ async function run(): Promise<void> {
         throw new Error("attach expects 'codex' or 'claude'");
       }
       const sampleFile = resolveAttachSampleFile();
-      const result = runtime === "codex" ? attachCodex(sampleFile) : attachClaude(sampleFile);
+      const result = runtime === "codex" ? attachCodex(sampleFile, process.cwd(), `${cliName} codex-runtime-hook --native-hook`) : attachClaude(sampleFile);
       print(result);
       return;
     }
@@ -193,7 +194,7 @@ async function run(): Promise<void> {
       if (arg1 !== "codex-hooks") {
         throw new Error("install expects 'codex-hooks'");
       }
-      print(installCodexHookPreset());
+      print(installCodexHookPreset(cliName));
       return;
     }
     case "status": {

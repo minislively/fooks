@@ -3,9 +3,10 @@ import { extractFile } from "../core/extract";
 import { detectAccountContext, finalizeAttach, installRuntimeManifest } from "./shared";
 import { codexRuntimeEscapeHatches } from "./codex-runtime-prompt";
 import { completeCodexInitialScan, initializeCodexTrustStatus } from "./codex-runtime-trust";
+import { defaultCodexHookCommand } from "./codex-hook-preset";
 import type { AttachResult } from "../core/schema";
 
-export function attachCodex(sampleFile: string, cwd = process.cwd()): AttachResult {
+export function attachCodex(sampleFile: string, cwd = process.cwd(), runtimeBridgeCommand = defaultCodexHookCommand()): AttachResult {
   initializeCodexTrustStatus(cwd);
   const scan = scanProject(cwd);
   const trustStatus = completeCodexInitialScan(scan.scannedAt, cwd);
@@ -23,7 +24,7 @@ export function attachCodex(sampleFile: string, cwd = process.cwd()): AttachResu
       : (() => {
           const manifestPath = installRuntimeManifest("codex", cwd, {
             runtimeBridge: {
-              command: "fxxks codex-runtime-hook --native-hook",
+              command: runtimeBridgeCommand,
               supportedHookEvents: ["SessionStart", "UserPromptSubmit", "Stop"],
               scope: {
                 extensions: [".tsx", ".jsx"],

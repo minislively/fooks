@@ -25,8 +25,8 @@ Avoid starting with a repo that is mostly backend, scripts, or config.
 From the target repo root:
 
 ```bash
-fxxks init
-fxxks scan
+fooks init
+fooks scan
 ```
 
 Check:
@@ -46,9 +46,9 @@ Pick three files:
 Then run:
 
 ```bash
-fxxks decide src/path/to/Small.tsx
-fxxks decide src/path/to/Large.tsx
-fxxks decide src/path/to/Stateful.tsx
+fooks decide src/path/to/Small.tsx
+fooks decide src/path/to/Large.tsx
+fooks decide src/path/to/Stateful.tsx
 ```
 
 Expected pattern:
@@ -65,8 +65,8 @@ before changing heuristics.
 For each representative file:
 
 ```bash
-fxxks extract src/path/to/File.tsx > /tmp/full.json
-fxxks extract src/path/to/File.tsx --model-payload > /tmp/model.json
+fooks extract src/path/to/File.tsx > /tmp/full.json
+fooks extract src/path/to/File.tsx --model-payload > /tmp/model.json
 ```
 
 Quick size check:
@@ -90,8 +90,8 @@ What to confirm in `model.json`:
 Run:
 
 ```bash
-time fxxks scan
-time fxxks scan
+time fooks scan
+time fooks scan
 ```
 
 Expected pattern:
@@ -102,7 +102,7 @@ Expected pattern:
 Then edit one file and run again:
 
 ```bash
-time fxxks scan
+time fooks scan
 ```
 
 Expected pattern:
