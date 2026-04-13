@@ -1,7 +1,8 @@
 import path from "node:path";
 import { decideCodexPreRead } from "./codex-pre-read";
-import { codexRuntimeEscapeHatches, extractPromptTarget, hasFullReadEscapeHatch } from "./codex-runtime-prompt";
+import { codexRuntimeEscapeHatches, hasFullReadEscapeHatch, resolvePromptFileContext } from "./codex-runtime-prompt";
 import { buildPreReadReuseStatus } from "./codex-runtime-status";
+import { clearCodexActiveFile, ensureFreshCodexContextForTarget, markCodexAttachPrepared, markCodexReady } from "./codex-runtime-trust";
 import {
   clearCodexRuntimeSession,
   initializeCodexRuntimeSession,
@@ -55,6 +56,7 @@ export function handleCodexRuntimeHook(input: CodexRuntimeHookInput, cwd = proce
 
   if (hookEventName === "SessionStart") {
     const statePath = initializeCodexRuntimeSession(cwd, sessionKey);
+    markCodexReady(cwd);
     return {
       runtime: "codex",
       hookEventName,
@@ -71,6 +73,7 @@ export function handleCodexRuntimeHook(input: CodexRuntimeHookInput, cwd = proce
 
   if (hookEventName === "Stop") {
     const statePath = clearCodexRuntimeSession(cwd, sessionKey);
+    clearCodexActiveFile(cwd);
     return {
       runtime: "codex",
       hookEventName,
@@ -86,7 +89,8 @@ export function handleCodexRuntimeHook(input: CodexRuntimeHookInput, cwd = proce
   }
 
   const prompt = input.prompt ?? "";
-  const target = extractPromptTarget(prompt, cwd);
+  const promptContext = resolvePromptFileContext(prompt, cwd);
+  const target = promptContext.filePath;
   const escapeHatchUsed = hasFullReadEscapeHatch(prompt);
 
   if (!target) {
@@ -104,6 +108,7 @@ export function handleCodexRuntimeHook(input: CodexRuntimeHookInput, cwd = proce
   }
 
   if (escapeHatchUsed) {
+    markCodexAttachPrepared({ filePath: target, source: "prompt-target" }, cwd);
     return fallbackDecision(
       hookEventName,
       target,
@@ -116,10 +121,12 @@ export function handleCodexRuntimeHook(input: CodexRuntimeHookInput, cwd = proce
     );
   }
 
+  const freshness = ensureFreshCodexContextForTarget(target, cwd);
   const { statePath, seenCount } = markCodexRuntimeSeenFile(cwd, sessionKey, target);
   const repeatedFile = seenCount >= 2;
 
   if (!repeatedFile) {
+    markCodexReady(cwd);
     return {
       runtime: "codex",
       hookEventName,
@@ -137,12 +144,13 @@ export function handleCodexRuntimeHook(input: CodexRuntimeHookInput, cwd = proce
 
   const decision = decideCodexPreRead(path.join(cwd, target), cwd);
   if (decision.decision === "payload" && decision.payload) {
+    markCodexAttachPrepared({ filePath: target, source: "prompt-target" }, cwd);
     return {
       runtime: "codex",
       hookEventName,
       action: "inject",
       filePath: target,
-      reasons: ["repeated-file"],
+      reasons: freshness.refreshed ? ["repeated-file", "refreshed-before-attach"] : ["repeated-file"],
       statePath,
       additionalContext: buildAdditionalContext(target, decision.payload),
       debug: {
@@ -154,6 +162,7 @@ export function handleCodexRuntimeHook(input: CodexRuntimeHookInput, cwd = proce
     };
   }
 
+  markCodexAttachPrepared({ filePath: target, source: "prompt-target" }, cwd);
   return fallbackDecision(
     hookEventName,
     target,

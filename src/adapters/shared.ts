@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { adapterDir, ensureFeLensDirs } from "../core/paths";
-import type { AttachResult, ExtractionResult } from "../core/schema";
+import type { AttachResult, CodexTrustStatus, ExtractionResult } from "../core/schema";
 
 type AccountDetection = {
   account: string;
@@ -129,12 +129,19 @@ export function installRuntimeManifest(runtime: "codex" | "claude", cwd = proces
   return manifestPath;
 }
 
-export function finalizeAttach(runtime: "codex" | "claude", sample: ExtractionResult, runtimeProof: AttachResult["runtimeProof"], cwd = process.cwd()): AttachResult {
+export function finalizeAttach(
+  runtime: "codex" | "claude",
+  sample: ExtractionResult,
+  runtimeProof: AttachResult["runtimeProof"],
+  cwd = process.cwd(),
+  trustStatus?: CodexTrustStatus,
+): AttachResult {
   return {
     runtime,
     accountContext: accountContext(cwd),
     filesCreated: writeAdapterFiles(runtime, cwd).map((file) => path.relative(cwd, file)),
     contractProof: contractProof(sample),
     runtimeProof,
+    trustStatus,
   };
 }

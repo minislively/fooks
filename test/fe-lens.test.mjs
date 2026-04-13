@@ -344,6 +344,45 @@ test("runtime hook falls back for escape hatch and raw readiness failures", () =
   assert.equal(overridden.debug.escapeHatchUsed, true);
 });
 
+test("runtime hook refreshes stale target state before repeated attach and updates trust status", () => {
+  const tempDir = makeTempProject();
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
+  run(["attach", "codex"], tempDir, { FE_LENS_CODEX_HOME: codexHome });
+
+  const sessionId = `hook-refresh-${Date.now()}`;
+  handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId }, tempDir);
+  handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId,
+      prompt: "Review src/components/FormSection.tsx",
+    },
+    tempDir,
+  );
+
+  appendMarker(path.join(tempDir, "src", "components", "FormSection.tsx"), "// trust-refresh-marker");
+
+  const second = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId,
+      prompt: "Again, review src/components/FormSection.tsx",
+    },
+    tempDir,
+  );
+
+  assert.equal(second.action, "inject");
+  assert.ok(second.reasons.includes("refreshed-before-attach"));
+
+  const trustStatus = run(["status", "codex"], tempDir);
+  assert.equal(trustStatus.connectionState, "connected");
+  assert.equal(trustStatus.lifecycleState, "attach-prepared");
+  assert.equal(trustStatus.activeFile.filePath, path.join("src", "components", "FormSection.tsx"));
+  assert.equal(trustStatus.activeFile.source, "prompt-target");
+  assert.ok(trustStatus.lastRefreshAt);
+  assert.ok(trustStatus.lastAttachPreparedAt);
+});
+
 test("runtime hook supports jsx repeated prompts and ignores linked ts prompts", () => {
   const jsxSession = `hook-jsx-${Date.now()}`;
   handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: jsxSession }, repoRoot);
@@ -731,6 +770,15 @@ test("attach codex proves contract and runtime under minislively account context
   assert.equal(runtimeManifest.runtimeBridge.command, "fxxks codex-runtime-hook --native-hook");
   assert.deepEqual(runtimeManifest.runtimeBridge.supportedHookEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
   assert.ok(runtimeManifest.runtimeBridge.escapeHatches.includes("#fxxks-full-read"));
+  assert.equal(result.trustStatus.connectionState, "connected");
+  assert.equal(result.trustStatus.lifecycleState, "ready");
+  assert.ok(result.trustStatus.lastScanAt);
+  assert.ok(result.trustStatus.lastRefreshAt);
+  const status = run(["status", "codex"], tempDir);
+  assert.equal(status.connectionState, "connected");
+  assert.equal(status.lifecycleState, "ready");
+  assert.ok(status.attachedAt);
+  assert.ok(status.lastScanAt);
 });
 
 test("attach claude can report blocker without failing contract proof", () => {

@@ -35,3 +35,9 @@ export function hasFullReadEscapeHatch(prompt: string): boolean {
 export function codexRuntimeEscapeHatches(): readonly string[] {
   return ESCAPE_HATCH_TOKENS;
 }
+
+
+export function resolvePromptFileContext(prompt: string, cwd = process.cwd()): { filePath?: string; source: "prompt-target" | "none" } {
+  const filePath = extractPromptTarget(prompt, cwd);
+  return filePath ? { filePath, source: "prompt-target" } : { source: "none" };
+}

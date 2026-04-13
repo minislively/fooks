@@ -13,6 +13,7 @@ import { decideCodexPreRead } from "../adapters/codex-pre-read";
 import { handleCodexRuntimeHook } from "../adapters/codex-runtime-hook";
 import { handleCodexNativeHookPayload } from "../adapters/codex-native-hook";
 import { installCodexHookPreset } from "../adapters/codex-hook-preset";
+import { readCodexTrustStatus } from "../adapters/codex-runtime-trust";
 import type { ExtractionResult } from "../core/schema";
 
 function print(value: unknown): void {
@@ -195,6 +196,13 @@ async function run(): Promise<void> {
       print(installCodexHookPreset());
       return;
     }
+    case "status": {
+      if (arg1 !== "codex") {
+        throw new Error("status expects 'codex'");
+      }
+      print(readCodexTrustStatus(process.cwd()));
+      return;
+    }
     case "codex-pre-read": {
       const file = requireFilePath(arg1);
       print(decideCodexPreRead(file, process.cwd()));
@@ -226,10 +234,11 @@ async function run(): Promise<void> {
     }
     default:
       console.error(`Unknown command: ${command ?? "<none>"}`);
-      console.error(`Usage: ${cliName} <init|scan|extract|decide|attach|install|codex-pre-read|codex-runtime-hook>`);
+      console.error(`Usage: ${cliName} <init|scan|extract|decide|attach|install|status|codex-pre-read|codex-runtime-hook>`);
       console.error(`       ${cliName} extract <file> [--model-payload] [--json]`);
       console.error(`       ${cliName} install codex-hooks`);
       console.error(`       ${cliName} codex-pre-read <file> [--json]`);
+      console.error(`       ${cliName} status codex`);
       console.error(`       ${cliName} codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop> [--session-id <id>] [--prompt <text>] [--json]`);
       console.error(`       ${cliName} codex-runtime-hook --native-hook`);
       process.exitCode = 1;

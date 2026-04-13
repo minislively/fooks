@@ -18,3 +18,5 @@ export {
 export { handleCodexRuntimeHook } from "./adapters/codex-runtime-hook";
 export { handleCodexNativeHookPayload } from "./adapters/codex-native-hook";
 export { installCodexHookPreset } from "./adapters/codex-hook-preset";
+
+export { readCodexTrustStatus } from "./adapters/codex-runtime-trust";

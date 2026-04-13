@@ -32,6 +32,7 @@ fxxks codex-pre-read <file>
 fxxks codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop>
 fxxks codex-runtime-hook --native-hook
 fxxks install codex-hooks
+fxxks status codex
 fxxks attach codex
 fxxks attach claude
 ```
@@ -160,6 +161,19 @@ fxxks install codex-hooks
 ```
 
 The installer is idempotent: it only adds the `fxxks codex-runtime-hook --native-hook` command to `SessionStart`, `UserPromptSubmit`, and `Stop` when those entries are missing, and preserves other hooks already present in `~/.codex/hooks.json`.
+
+For a lightweight trust/debug surface after attach, inspect the Codex runtime status:
+
+```bash
+fxxks status codex
+```
+
+This keeps the product UX quiet by default while still exposing the minimum trust signals we care about in Phase 2B:
+
+- connection state
+- lifecycle state (`ready`, `refreshing`, `attach-prepared`, ...)
+- last scan / refresh timestamps
+- current active file when an attach package was prepared
 
 For a real-world feedback loop after installation, use the checklist in [`docs/codex-live-feedback-checklist.md`](docs/codex-live-feedback-checklist.md).
 

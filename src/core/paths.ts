@@ -27,3 +27,7 @@ export function cacheFilePath(hash: string, cwd = process.cwd()): string {
 export function adapterDir(runtime: "codex" | "claude", cwd = process.cwd()): string {
   return path.join(cwd, FE_LENS_DIR, "adapters", runtime);
 }
+
+export function runtimeStatusPath(runtime: "codex" | "claude", cwd = process.cwd()): string {
+  return path.join(adapterDir(runtime, cwd), "status.json");
+}

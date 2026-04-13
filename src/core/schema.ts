@@ -181,6 +181,31 @@ export type ScanResult = {
   refreshedEntries: number;
 };
 
+export type CodexTrustLifecycleState =
+  | "disconnected"
+  | "indexing"
+  | "ready"
+  | "stale"
+  | "refreshing"
+  | "attach-prepared";
+
+export type CodexActiveFileContext = {
+  filePath: string;
+  source: "prompt-target";
+};
+
+export type CodexTrustStatus = {
+  runtime: "codex";
+  connectionState: "connected" | "disconnected";
+  lifecycleState: CodexTrustLifecycleState;
+  attachedAt?: string;
+  lastScanAt?: string;
+  lastRefreshAt?: string;
+  lastAttachPreparedAt?: string;
+  activeFile?: CodexActiveFileContext;
+  updatedAt: string;
+};
+
 export type AttachResult = {
   runtime: "codex" | "claude";
   accountContext: string;
@@ -196,4 +221,5 @@ export type AttachResult = {
     artifactPath?: string;
     blocker?: string;
   };
+  trustStatus?: CodexTrustStatus;
 };

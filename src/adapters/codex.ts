@@ -1,9 +1,14 @@
+import { scanProject } from "../core/scan";
 import { extractFile } from "../core/extract";
 import { detectAccountContext, finalizeAttach, installRuntimeManifest } from "./shared";
 import { codexRuntimeEscapeHatches } from "./codex-runtime-prompt";
+import { completeCodexInitialScan, initializeCodexTrustStatus } from "./codex-runtime-trust";
 import type { AttachResult } from "../core/schema";
 
 export function attachCodex(sampleFile: string, cwd = process.cwd()): AttachResult {
+  initializeCodexTrustStatus(cwd);
+  const scan = scanProject(cwd);
+  const trustStatus = completeCodexInitialScan(scan.scannedAt, cwd);
   const sample = extractFile(sampleFile);
   const account = detectAccountContext(cwd);
   const attemptedAt = new Date().toISOString();
@@ -43,5 +48,5 @@ export function attachCodex(sampleFile: string, cwd = process.cwd()): AttachResu
             details: [`account-context=${account.account}`, `account-source=${account.source}`, `runtime-manifest=${manifestPath}`, "codex adapter artifacts created"],
           };
         })();
-  return finalizeAttach("codex", sample, runtimeProof, cwd);
+  return finalizeAttach("codex", sample, runtimeProof, cwd, trustStatus);
 }
