@@ -161,6 +161,8 @@ fxxks install codex-hooks
 
 The installer is idempotent: it only adds the `fxxks codex-runtime-hook --native-hook` command to `SessionStart`, `UserPromptSubmit`, and `Stop` when those entries are missing, and preserves other hooks already present in `~/.codex/hooks.json`.
 
+For a real-world feedback loop after installation, use the checklist in [`docs/codex-live-feedback-checklist.md`](docs/codex-live-feedback-checklist.md).
+
 If you prefer to edit the file manually, add this preset:
 
 ```json
