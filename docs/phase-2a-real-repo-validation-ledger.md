@@ -1,9 +1,11 @@
 # Phase 2A — Real Repo Validation Ledger
 
-Updated: 2026-04-12 (Asia/Seoul)
-Repo under validation: `/Users/veluga/Documents/Workspace_Minseol/ai-job-finder`
+Updated: 2026-04-13 (Asia/Seoul)
+Repos under validation:
+- `/Users/veluga/Documents/Workspace_Minseol/ai-job-finder`
+- `/Users/veluga/Documents/Workspace_Minseol/hyperflow`
 Validation harness repo: `/Users/veluga/Documents/Workspace_Minseol/fxxks`
-Current `fxxks` commit at capture time: `8f54360`
+Current `fxxks` commit at capture time: `61c6919`
 
 ## Sign-off rule
 - Base success: edit quality + reviewer confirmation
@@ -79,30 +81,55 @@ Current `fxxks` commit at capture time: `8f54360`
 - Failure summary: none observed for this task
 - Status: **successful Phase 2A validation task**
 
-### Task C — linked-context candidate discovery (evidence gap)
+### Task C — CompareNodeChrome linked type-only context edit
+- Repo: `hyperflow`
+- Target file: `apps/site/src/compare/CompareNodeChrome.tsx`
+- Linked context: `apps/site/src/compare/types.ts` (`import type { CompareNodeData } from "./types.ts";`)
+- Task type: same-file UI copy polish that depends on bounded linked type context
+- Requested change: replace raw `data.kind` tokens with human-friendly labels (`Input node`, `Transform node`, `Output node`) without weakening type safety
+- Initial mode: `hybrid`
+- Decision reason:
+  - `shallow-jsx`
+  - `multiple-conditionals`
+  - `style-branching`
+- Confidence: `medium`
+- Linked context used: yes — same-folder `type`-only import from `types.ts`
+- Fallback: none observed
+- Build/test status:
+  - `build`: passed (`pnpm build` in `apps/site`)
+  - `lint`: `not-tested` (no app-local fast lint script; workspace lint/check is substantially broader)
+  - `test`: `not-tested` (no task-specific fast test selected)
+- Reviewer outcome: success
+- Current evidence:
+  - `fxxks scan` indexed both `apps/site/src/compare/CompareNodeChrome.tsx` and qualifying linked-ts `apps/site/src/compare/types.ts`
+  - edit stayed local to `CompareNodeChrome.tsx` while using `Record<CompareNodeData["kind"], string>` for type-safe label coverage
+  - payload bytes: `2268 -> 1687` (~25.6% reduction)
+  - resulting diff only replaces the raw union token with a bounded label map
+- Failure summary: none observed for this task
+- Status: **successful Phase 2A linked-context validation task**
+
+### Task D — linked-context candidate discovery follow-up
 - Scope searched:
   - `/Users/veluga/Documents/Workspace_Minseol/ai-job-finder`
   - `/Users/veluga/Documents/Workspace_Minseol/ai-subsidy-job-finder`
   - `/Users/veluga/Documents/Workspace_Minseol/portfolio`
+  - `/Users/veluga/Documents/Workspace_Minseol/hyperflow`
 - Search rule:
   - `.tsx/.jsx` importing same-folder `.ts` files that match the current allowlist (`.types/.props/.interface/.config/.util/.utils/.helper/.helpers` or `type`-only imports)
 - Result:
-  - no qualifying linked `.ts` edit candidate found in those active app repos
+  - qualifying linked `.ts` candidates remain sparse in the active app repos
 - Additional probe:
   - `/Users/veluga/Documents/Workspace_Minseol/hyperflow/packages/react/src/react.tsx` imports same-folder `./starter`
   - current `fxxks scan` does **not** index `starter.ts` as linked context because it is outside the current bounded allowlist
 - Interpretation:
   - the bounded linked `.ts` policy remains conservative in practice
-  - we do not yet have a successful real edit task that exercises linked `.ts` inclusion inside the current allowlist
-  - the nearest concrete future case is a same-folder helper/config file, but widening beyond the allowlist still requires an explicit failure case
-- Status: **open evidence gap; no scope widening justified yet**
+  - we now have one successful allowlist-compliant linked-context task (`CompareNodeChrome.tsx` + `types.ts`)
+  - broader scope widening is still not justified without an explicit real failure case
+- Status: **bounded linked-context evidence established; broader scope still intentionally closed**
 
 ## Immediate next step
-Run 2–3 real edit tasks in `ai-job-finder` and log, for each:
-1. requested change
-2. chosen mode / reason / confidence
-3. whether linked `.ts` was needed
-4. whether fallback happened
-5. edit outcome after reviewer check
-6. build/lint result if relevant and fast
-7. failure summary if any
+Continue real-repo validation with an emphasis on evidence we still lack:
+1. at least one low-confidence or late-fallback case
+2. any failure where `compressed` or `hybrid` should have been `raw`
+3. any repo/task that would justify widening the bounded linked `.ts` allowlist
+4. build/lint/test results when they are fast and relevant
