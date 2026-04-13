@@ -5,7 +5,7 @@ Repos under validation:
 - `/Users/veluga/Documents/Workspace_Minseol/ai-job-finder`
 - `/Users/veluga/Documents/Workspace_Minseol/hyperflow`
 Validation harness repo: `/Users/veluga/Documents/Workspace_Minseol/fxxks`
-Current `fxxks` commit at capture time: `1c780ad`
+Current `fxxks` commit at capture time: `4fc8140`
 
 ## Sign-off rule
 - Base success: edit quality + reviewer confirmation
@@ -174,6 +174,30 @@ Current `fxxks` commit at capture time: `1c780ad`
   - another low-confidence same-file task completed cleanly without forcing a raw fallback
 - Failure summary: none observed for this task
 - Status: **successful low-confidence Phase 2A validation task**
+
+### Task G — ThemeProvider raw-mode wrapper polish
+- Repo: `ai-job-finder`
+- Target file: `components/ThemeProvider.tsx`
+- Task type: high-confidence raw same-file wrapper edit
+- Requested change: add `ThemeProvider.displayName = "ThemeProvider"` for clearer React DevTools naming without changing theme behavior
+- Initial mode: `raw`
+- Decision reason:
+  - `small-file`
+  - `shallow-jsx`
+- Confidence: `high`
+- Linked context used: none
+- Fallback: not applicable — raw was selected up front
+- Build/test status:
+  - `build`: passed (`next build`)
+  - `lint`: passed with the same pre-existing warnings recorded in Task A
+  - `test`: `not-tested` (repo has no dedicated test script)
+- Reviewer outcome: success
+- Current evidence:
+  - payload bytes: `1513 -> 467` (~69.1% reduction), but the engine still selected `raw` because the file is tiny and full-read cost is already low
+  - resulting diff stayed local to the wrapper file and preserved existing `NextThemesProvider` prop passthrough behavior
+  - this is a concrete example where **policy should prefer raw even when byte reduction looks attractive**
+- Failure summary: none observed for this task
+- Status: **successful raw-mode Phase 2A validation task**
 
 ## Immediate next step
 Continue real-repo validation with an emphasis on the remaining evidence gaps:
