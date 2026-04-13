@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 const CODEX_HOOK_EVENTS = ["SessionStart", "UserPromptSubmit", "Stop"] as const;
+const CODEX_HOOK_SUFFIX = "codex-runtime-hook --native-hook";
 
 type CodexHookEvent = (typeof CODEX_HOOK_EVENTS)[number];
 
@@ -33,11 +34,19 @@ export type CodexHookPresetInstallResult = {
 };
 
 export function defaultCodexHookCommand(cliName = "fooks"): string {
-  return `${cliName} codex-runtime-hook --native-hook`;
+  return `${cliName} ${CODEX_HOOK_SUFFIX}`;
 }
 
 function compatibleCodexHookCommands(cliName = "fooks"): string[] {
   return [...new Set([defaultCodexHookCommand(cliName), defaultCodexHookCommand("fooks"), defaultCodexHookCommand("fxxks"), defaultCodexHookCommand("fe-lens")])];
+}
+
+function isLegacyNodeBridgeCommand(commandText: string): boolean {
+  return /^node\s+(?:"[^"]+\/dist\/cli\/index\.js"|'[^']+\/dist\/cli\/index\.js'|\S+\/dist\/cli\/index\.js)\s+codex-runtime-hook --native-hook$/.test(commandText);
+}
+
+function isCompatibleCodexHookCommand(commandText: string, cliName = "fooks"): boolean {
+  return compatibleCodexHookCommands(cliName).includes(commandText) || isLegacyNodeBridgeCommand(commandText);
 }
 
 function runtimeHome(): string {
@@ -62,13 +71,17 @@ function readHooksFile(filePath: string): HooksFile {
   return { hooks: parsed.hooks ?? {} };
 }
 
-function matcherContainsCommand(matcher: HookMatcher, commands: string[]): boolean {
-  return Array.isArray(matcher.hooks) && matcher.hooks.some((hook) => hook?.type === "command" && commands.includes(hook.command));
+function findCompatibleCommandHook(matcher: HookMatcher, cliName = "fooks"): HookCommand | undefined {
+  if (!Array.isArray(matcher.hooks)) return undefined;
+  return matcher.hooks.find((hook) => hook?.type === "command" && isCompatibleCodexHookCommand(hook.command, cliName));
 }
 
 function ensureEventHook(hooksFile: HooksFile, event: CodexHookEvent, command: string): boolean {
   const eventHooks = hooksFile.hooks?.[event] ?? [];
-  if (eventHooks.some((matcher) => matcherContainsCommand(matcher, compatibleCodexHookCommands(command.split(" ")[0])))) {
+  const cliName = command.split(" ")[0];
+  const existingHook = eventHooks.map((matcher) => findCompatibleCommandHook(matcher, cliName)).find(Boolean);
+  if (existingHook) {
+    existingHook.command = command;
     hooksFile.hooks![event] = eventHooks;
     return false;
   }

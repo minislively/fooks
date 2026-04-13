@@ -791,6 +791,29 @@ test("install codex-hooks merges without clobbering existing hooks and stays ide
   assert.deepEqual(second.skippedEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
 });
 
+test("install codex-hooks rewrites legacy bridge commands to the canonical fooks command", () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
+  const hooksPath = path.join(codexHome, "hooks.json");
+  fs.writeFileSync(hooksPath, JSON.stringify({
+    hooks: {
+      SessionStart: [{ matcher: "startup|resume", hooks: [{ type: "command", command: "fxxks codex-runtime-hook --native-hook" }] }],
+      UserPromptSubmit: [{ hooks: [{ type: "command", command: "node \"/Users/veluga/Documents/Workspace_Minseol/fxxks/dist/cli/index.js\" codex-runtime-hook --native-hook" }] }],
+      Stop: [{ hooks: [{ type: "command", command: "fe-lens codex-runtime-hook --native-hook" }] }],
+    },
+  }, null, 2));
+
+  const result = run(["install", "codex-hooks"], repoRoot, { FE_LENS_CODEX_HOME: codexHome });
+  assert.equal(result.created, false);
+  assert.equal(result.modified, true);
+  assert.deepEqual(result.installedEvents, []);
+  assert.deepEqual(result.skippedEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
+
+  const normalized = JSON.parse(fs.readFileSync(hooksPath, "utf8"));
+  assert.equal(normalized.hooks.SessionStart[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
+  assert.equal(normalized.hooks.UserPromptSubmit[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
+  assert.equal(normalized.hooks.Stop[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
+});
+
 test("attach codex proves contract and runtime under minislively account context", () => {
   const tempDir = makeTempProject();
   const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
