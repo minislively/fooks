@@ -177,6 +177,8 @@ This keeps the product UX quiet by default while still exposing the minimum trus
 
 For a real-world feedback loop after installation, use the checklist in [`docs/codex-live-feedback-checklist.md`](docs/codex-live-feedback-checklist.md).
 
+For the next Phase 2B step — validating remaining trust/refresh/source-of-truth risks in real usage — use [`docs/phase-2b-risk-validation-checklist.md`](docs/phase-2b-risk-validation-checklist.md).
+
 If you prefer to edit the file manually, add this preset:
 
 ```json

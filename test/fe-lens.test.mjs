@@ -383,6 +383,42 @@ test("runtime hook refreshes stale target state before repeated attach and updat
   assert.ok(trustStatus.lastAttachPreparedAt);
 });
 
+test("stop clears active file from codex trust status after an attach-prepared session", () => {
+  const tempDir = makeTempProject();
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
+  run(["attach", "codex"], tempDir, { FE_LENS_CODEX_HOME: codexHome });
+
+  const sessionId = `hook-stop-status-${Date.now()}`;
+  handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId }, tempDir);
+  handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId,
+      prompt: "Review src/components/FormSection.tsx",
+    },
+    tempDir,
+  );
+  handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId,
+      prompt: "Again, review src/components/FormSection.tsx",
+    },
+    tempDir,
+  );
+
+  const prepared = run(["status", "codex"], tempDir);
+  assert.equal(prepared.lifecycleState, "attach-prepared");
+  assert.equal(prepared.activeFile.filePath, path.join("src", "components", "FormSection.tsx"));
+
+  handleCodexRuntimeHook({ hookEventName: "Stop", sessionId }, tempDir);
+
+  const afterStop = run(["status", "codex"], tempDir);
+  assert.equal(afterStop.connectionState, "connected");
+  assert.equal(afterStop.lifecycleState, "ready");
+  assert.equal("activeFile" in afterStop, false);
+});
+
 test("runtime hook supports jsx repeated prompts and ignores linked ts prompts", () => {
   const jsxSession = `hook-jsx-${Date.now()}`;
   handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: jsxSession }, repoRoot);
