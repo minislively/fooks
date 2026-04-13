@@ -5,7 +5,7 @@ Repos under validation:
 - `/Users/veluga/Documents/Workspace_Minseol/ai-job-finder`
 - `/Users/veluga/Documents/Workspace_Minseol/hyperflow`
 Validation harness repo: `/Users/veluga/Documents/Workspace_Minseol/fxxks`
-Current `fxxks` commit at capture time: `61c6919`
+Current `fxxks` commit at capture time: `1c780ad`
 
 ## Sign-off rule
 - Base success: edit quality + reviewer confirmation
@@ -150,6 +150,30 @@ Current `fxxks` commit at capture time: `61c6919`
   - we now have one successful allowlist-compliant linked-context task (`CompareNodeChrome.tsx` + `types.ts`)
   - broader scope widening is still not justified without an explicit real failure case
 - Status: **bounded linked-context evidence established; broader scope still intentionally closed**
+
+
+### Task F — JobCard low-confidence accessibility polish
+- Repo: `ai-job-finder`
+- Target file: `components/JobCard.tsx`
+- Task type: low-confidence same-file accessibility edit
+- Requested change: add accessible saved-state metadata to the save toggle button via `aria-label` and `aria-pressed`
+- Initial mode: `hybrid`
+- Decision reason:
+  - `multiple-conditionals`
+- Confidence: `low`
+- Linked context used: none
+- Fallback: none observed
+- Build/test status:
+  - `build`: passed (`next build`)
+  - `lint`: passed with the same pre-existing warnings recorded in Task A
+  - `test`: `not-tested` (repo has no dedicated test script)
+- Reviewer outcome: success
+- Current evidence:
+  - payload bytes: `2648 -> 2092` (~21.0% reduction)
+  - resulting diff stayed local to the existing save button and only added two accessibility props
+  - another low-confidence same-file task completed cleanly without forcing a raw fallback
+- Failure summary: none observed for this task
+- Status: **successful low-confidence Phase 2A validation task**
 
 ## Immediate next step
 Continue real-repo validation with an emphasis on the remaining evidence gaps:
