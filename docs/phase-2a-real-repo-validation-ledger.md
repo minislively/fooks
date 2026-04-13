@@ -108,7 +108,31 @@ Current `fxxks` commit at capture time: `61c6919`
 - Failure summary: none observed for this task
 - Status: **successful Phase 2A linked-context validation task**
 
-### Task D — linked-context candidate discovery follow-up
+### Task D — SearchBar low-confidence same-file edit
+- Repo: `ai-job-finder`
+- Target file: `components/SearchBar.tsx`
+- Task type: low-confidence same-file UX polish
+- Requested change: add a live character count below the search input without changing the debounce/search behavior
+- Initial mode: `hybrid`
+- Decision reason:
+  - `shallow-jsx`
+  - `heavy-hook-usage`
+- Confidence: `low`
+- Linked context used: none
+- Fallback: none observed
+- Build/test status:
+  - `build`: passed (`next build`)
+  - `lint`: passed with the same pre-existing warnings recorded in Task A
+  - `test`: `not-tested` (repo has no dedicated test script)
+- Reviewer outcome: success
+- Current evidence:
+  - payload bytes: `1585 -> 1031` (~34.9% reduction)
+  - edit stayed local to `SearchBar.tsx` and preserved the debounced `onSearch` effect wiring
+  - low confidence did **not** force a fallback here; the task still completed cleanly as a bounded same-file edit
+- Failure summary: none observed for this task
+- Status: **successful low-confidence Phase 2A validation task**
+
+### Task E — linked-context candidate discovery follow-up
 - Scope searched:
   - `/Users/veluga/Documents/Workspace_Minseol/ai-job-finder`
   - `/Users/veluga/Documents/Workspace_Minseol/ai-subsidy-job-finder`
@@ -128,8 +152,8 @@ Current `fxxks` commit at capture time: `61c6919`
 - Status: **bounded linked-context evidence established; broader scope still intentionally closed**
 
 ## Immediate next step
-Continue real-repo validation with an emphasis on evidence we still lack:
-1. at least one low-confidence or late-fallback case
-2. any failure where `compressed` or `hybrid` should have been `raw`
-3. any repo/task that would justify widening the bounded linked `.ts` allowlist
+Continue real-repo validation with an emphasis on the remaining evidence gaps:
+1. at least one late-fallback or explicit failure case
+2. any task where `compressed` or `hybrid` should have been `raw`
+3. any repo/task that would justify widening the bounded linked `.ts` allowlist beyond the current same-folder policy
 4. build/lint/test results when they are fast and relevant
