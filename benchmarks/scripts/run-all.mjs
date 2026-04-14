@@ -1,4 +1,4 @@
-import { runAllSuites, writeResultArtifacts, printSummaryLines, relativeToRepo, mergeHarnessBreakdown, formatOutsideScanBreakdown, formatHarnessBreakdown } from "./lib.mjs";
+import { runAllSuites, writeResultArtifacts, printSummaryLines, relativeToRepo, mergeHarnessBreakdown, formatOutsideScanBreakdown, formatDispatchSubBreakdown, formatHarnessBreakdown } from "./lib.mjs";
 
 export function main() {
   const { runId, envelope } = runAllSuites();
@@ -14,6 +14,7 @@ export function main() {
     `- scan cold/warm/partial(single): ${envelope.suites.scanCache.runs.cold.avgMs}/${envelope.suites.scanCache.runs.warm.avgMs}/${envelope.suites.scanCache.runs.partialSingle.avgMs}ms`,
     `- warm runtime split: cli ${envelope.suites.scanCache.runs.warm.runtimeBreakdown.cliWallMs}ms / scan ${envelope.suites.scanCache.runs.warm.runtimeBreakdown.scanCoreMs}ms / outside-scan ${envelope.suites.scanCache.runs.warm.runtimeBreakdown.outsideScanMs}ms`,
     `- warm outside-scan breakdown: ${formatOutsideScanBreakdown(envelope.suites.scanCache.runs.warm)}`,
+    `- warm dispatch sub-breakdown: ${formatDispatchSubBreakdown(envelope.suites.scanCache.runs.warm)}`,
     `- scan harness overhead: ${formatHarnessBreakdown(envelope.suites.scanCache.harnessBreakdown)}`,
     `- extract fixtures: ${envelope.suites.extract.length}`,
     `- preservation fixtures: ${envelope.suites.preservation.fixtures.length}`,

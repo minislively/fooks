@@ -80,27 +80,33 @@ Current verification snapshot:
   - `FormSection.tsx`: 34.59% reduction
   - `DashboardPanel.tsx`: 46.63% reduction
 - latest benchmark baseline (`benchmarks/results/latest/benchmark.json`):
-  - cold avg: 324.18ms
-  - warm avg: 236.21ms
-  - partial single avg: 263.52ms
-  - partial multi avg: 263.7ms
-  - rescan after invalidation avg: 331.62ms
+  - cold avg: 361.92ms
+  - warm avg: 253.95ms
+  - partial single avg: 273.89ms
+  - partial multi avg: 279.5ms
+  - rescan after invalidation avg: 423.58ms
   - warm runtime split:
-    - CLI wall: 236.21ms
-    - scan core: 8.54ms
-    - outside-scan: 227.67ms
+    - CLI wall: 253.95ms
+    - scan core: 9.96ms
+    - outside-scan: 243.99ms
   - warm outside-scan breakdown:
-    - command dispatch: 148.22ms
-    - result serialization: 0.12ms
-    - stdout write: 3.04ms
-    - unattributed residual: 76.29ms
+    - command dispatch: 160.16ms
+    - result serialization: 0.13ms
+    - stdout write: 3.48ms
+    - unattributed residual: 80.22ms
+  - warm dispatch sub-breakdown:
+    - paths import: 5.99ms
+    - scan import: 153.84ms
+    - ensure dirs: 0.29ms
+    - dispatch residual: 0.04ms
   - scan observability now captures:
     - step timings (`discovery`, `stat`, `fileRead`, `hash`, `cacheRead`, `extract`, `cacheWrite`, `indexWrite`, `total`)
     - skip/hit/miss structure (`metadataReuseCount`, `fileReadCount`, `reparsedFileCount`)
     - top slow files per scenario
     - outside-scan command-path breakdown (`commandDispatchMs`, `resultSerializeMs`, `stdoutWriteMs`, `commandPathUnattributedMs`)
+    - scan startup sub-buckets (`pathsModuleImportMs`, `scanModuleImportMs`, `ensureProjectDataDirsMs`, `commandDispatchResidualMs`)
     - benchmark-harness overhead (`stdoutParseMsByScenario`, `artifactWriteMs`)
-- current optimization read: unchanged-file rereads are under control; the next safe bucket is the now-measured scan command startup/module-load path, not stdout or artifact writes
+- current optimization read: unchanged-file rereads are under control, and the measured scan startup bucket is now dominated by `scan` module import time rather than stdout or artifact writes
 - optimization follow-up ranking: [`docs/benchmark-phase-2-optimization-candidates.md`](docs/benchmark-phase-2-optimization-candidates.md)
 
 ## Model-facing payload

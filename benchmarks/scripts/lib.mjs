@@ -194,6 +194,10 @@ function deriveRuntimeBreakdown(cliWallMs, observability, commandPathBreakdown =
   const scanCoreMs = round(observability?.timingsMs?.total ?? 0);
   const outsideScanMs = round(Math.max(0, cliWallMs - scanCoreMs));
   const commandDispatchMs = round(commandPathBreakdown.commandDispatchMs ?? 0);
+  const pathsModuleImportMs = round(commandPathBreakdown.pathsModuleImportMs ?? 0);
+  const scanModuleImportMs = round(commandPathBreakdown.scanModuleImportMs ?? 0);
+  const ensureProjectDataDirsMs = round(commandPathBreakdown.ensureProjectDataDirsMs ?? 0);
+  const commandDispatchResidualMs = round(commandPathBreakdown.commandDispatchResidualMs ?? Math.max(0, commandDispatchMs - pathsModuleImportMs - scanModuleImportMs - ensureProjectDataDirsMs));
   const resultSerializeMs = round(commandPathBreakdown.resultSerializeMs ?? 0);
   const stdoutWriteMs = round(commandPathBreakdown.stdoutWriteMs ?? 0);
   const commandPathMeasuredMs = round(commandDispatchMs + resultSerializeMs + stdoutWriteMs);
@@ -206,6 +210,10 @@ function deriveRuntimeBreakdown(cliWallMs, observability, commandPathBreakdown =
     outsideScanRatio: cliWallMs > 0 ? round(outsideScanMs / cliWallMs, 4) : 0,
     outsideScanBreakdown: {
       commandDispatchMs,
+      pathsModuleImportMs,
+      scanModuleImportMs,
+      ensureProjectDataDirsMs,
+      commandDispatchResidualMs,
       resultSerializeMs,
       stdoutWriteMs,
       commandPathMeasuredMs,
@@ -597,6 +605,24 @@ export function printSummaryLines(lines) {
   }
 }
 
+export function formatDispatchSubBreakdown(run) {
+  const breakdown = run.runtimeBreakdown.outsideScanBreakdown;
+  const parts = [];
+  if (typeof breakdown.pathsModuleImportMs === "number") {
+    parts.push(`paths import ${breakdown.pathsModuleImportMs}ms`);
+  }
+  if (typeof breakdown.scanModuleImportMs === "number") {
+    parts.push(`scan import ${breakdown.scanModuleImportMs}ms`);
+  }
+  if (typeof breakdown.ensureProjectDataDirsMs === "number") {
+    parts.push(`ensure dirs ${breakdown.ensureProjectDataDirsMs}ms`);
+  }
+  if (typeof breakdown.commandDispatchResidualMs === "number") {
+    parts.push(`dispatch residual ${breakdown.commandDispatchResidualMs}ms`);
+  }
+  return parts.length ? parts.join(" / ") : "n/a";
+}
+
 export function formatOutsideScanBreakdown(run) {
   const breakdown = run.runtimeBreakdown.outsideScanBreakdown;
   return `dispatch ${breakdown.commandDispatchMs}ms / serialize ${breakdown.resultSerializeMs}ms / stdout ${breakdown.stdoutWriteMs}ms / unattributed ${breakdown.commandPathUnattributedMs}ms (${breakdown.transportStatus})`;
@@ -625,6 +651,7 @@ export function scanCacheSummary(report, latestPath) {
     `- rescan after invalidation avg: ${report.runs.rescanAfterInvalidation.avgMs}ms`,
     `- warm runtime split: cli ${report.runs.warm.runtimeBreakdown.cliWallMs}ms / scan ${report.runs.warm.runtimeBreakdown.scanCoreMs}ms / outside-scan ${report.runs.warm.runtimeBreakdown.outsideScanMs}ms`,
     `- warm outside-scan breakdown: ${formatOutsideScanBreakdown(report.runs.warm)}`,
+    `- warm dispatch sub-breakdown: ${formatDispatchSubBreakdown(report.runs.warm)}`,
     `- harness overhead: ${formatHarnessBreakdown(report.harnessBreakdown)}`,
   ];
 }

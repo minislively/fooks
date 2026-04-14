@@ -743,6 +743,10 @@ test("scan writes benchmark-only command-path timings to a side channel without 
   assert.equal(timingPayload.schemaVersion, 1);
   assert.equal(timingPayload.command, "scan");
   assert.ok(timingPayload.commandPathBreakdown.commandDispatchMs >= 0);
+  assert.ok(timingPayload.commandPathBreakdown.pathsModuleImportMs >= 0);
+  assert.ok(timingPayload.commandPathBreakdown.scanModuleImportMs >= 0);
+  assert.ok(timingPayload.commandPathBreakdown.ensureProjectDataDirsMs >= 0);
+  assert.ok(timingPayload.commandPathBreakdown.commandDispatchResidualMs >= 0);
   assert.ok(timingPayload.commandPathBreakdown.resultSerializeMs >= 0);
   assert.ok(timingPayload.commandPathBreakdown.stdoutWriteMs >= 0);
 

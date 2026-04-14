@@ -73,6 +73,10 @@ test("scan-cache benchmark script emits expanded scenarios and writes the latest
   assert.ok(result.runs.warm.runtimeBreakdown.scanCoreMs >= 0);
   assert.ok(result.runs.warm.runtimeBreakdown.outsideScanMs >= 0);
   assert.ok(result.runs.warm.runtimeBreakdown.outsideScanBreakdown.commandDispatchMs >= 0);
+  assert.ok(result.runs.warm.runtimeBreakdown.outsideScanBreakdown.pathsModuleImportMs >= 0);
+  assert.ok(result.runs.warm.runtimeBreakdown.outsideScanBreakdown.scanModuleImportMs >= 0);
+  assert.ok(result.runs.warm.runtimeBreakdown.outsideScanBreakdown.ensureProjectDataDirsMs >= 0);
+  assert.ok(result.runs.warm.runtimeBreakdown.outsideScanBreakdown.commandDispatchResidualMs >= 0);
   assert.ok(result.runs.warm.runtimeBreakdown.outsideScanBreakdown.resultSerializeMs >= 0);
   assert.ok(result.runs.warm.runtimeBreakdown.outsideScanBreakdown.stdoutWriteMs >= 0);
   assert.ok(result.runs.warm.runtimeBreakdown.outsideScanBreakdown.commandPathUnattributedMs >= 0);

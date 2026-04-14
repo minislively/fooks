@@ -12,6 +12,12 @@ function roundMs(value: number): number {
   return Number(value.toFixed(2));
 }
 
+async function timedImport<T>(specifier: string): Promise<{ module: T; durationMs: number }> {
+  const startedAt = performance.now();
+  const module = (await import(specifier)) as T;
+  return { module, durationMs: roundMs(performance.now() - startedAt) };
+}
+
 function printWithTimings(value: unknown): { resultSerializeMs: number; stdoutWriteMs: number } {
   const serializeStartedAt = performance.now();
   const serialized = JSON.stringify(value, null, 2);
@@ -199,16 +205,21 @@ async function run(): Promise<void> {
       return;
     }
     case "scan": {
-      const [{ ensureProjectDataDirs }, { scanProject }] = await Promise.all([
-        import("../core/paths.js"),
-        import("../core/scan.js"),
-      ]);
-      ensureProjectDataDirs();
+      const pathsImport = await timedImport<typeof import("../core/paths")>("../core/paths.js");
+      const scanImport = await timedImport<typeof import("../core/scan")>("../core/scan.js");
+      const ensureProjectDataDirsStartedAt = performance.now();
+      pathsImport.module.ensureProjectDataDirs();
+      const ensureProjectDataDirsMs = roundMs(performance.now() - ensureProjectDataDirsStartedAt);
       const commandDispatchMs = roundMs(performance.now() - commandStartedAt);
-      const result = scanProject();
+      const commandDispatchResidualMs = roundMs(Math.max(0, commandDispatchMs - pathsImport.durationMs - scanImport.durationMs - ensureProjectDataDirsMs));
+      const result = scanImport.module.scanProject();
       const { resultSerializeMs, stdoutWriteMs } = printWithTimings(result);
       maybeWriteBenchTiming("scan", {
         commandDispatchMs,
+        pathsModuleImportMs: pathsImport.durationMs,
+        scanModuleImportMs: scanImport.durationMs,
+        ensureProjectDataDirsMs,
+        commandDispatchResidualMs,
         resultSerializeMs,
         stdoutWriteMs,
       });
