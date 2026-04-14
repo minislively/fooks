@@ -9,11 +9,11 @@ This note updates the optimization backlog after the first scan/discovery/cache-
 
 ## Latest snapshot
 
-- cold avg: `382.22ms`
-- warm avg: `261.29ms`
-- partial single avg: `300.95ms`
-- partial multi avg: `300.07ms`
-- rescan after invalidation avg: `400.66ms`
+- cold avg: `325.65ms`
+- warm avg: `235.75ms`
+- partial single avg: `255.96ms`
+- partial multi avg: `254.47ms`
+- rescan after invalidation avg: `324.04ms`
 - extract reduction:
   - `SimpleButton` → `raw` (no reduction target)
   - `FormSection` → `34.59%`
@@ -38,17 +38,17 @@ The runtime behavior also changed conservatively:
 
 ### 1. The internal scan path is now much cheaper on warm/partial runs than the end-to-end CLI wall time suggests
 
-The top-line benchmark numbers still show warm/partial runs in the `261–301ms` range, but the new internal observability shows that the actual scan work is far smaller:
+The top-line benchmark numbers still show warm/partial runs in the `236–256ms` range, but the new internal observability shows that the actual scan work is far smaller:
 
-- warm internal total: about `10.86ms`
+- warm internal total: about `8.36ms`
   - `fileReadCount: 0`
   - `metadataReuseCount: 81`
   - `reparsedFileCount: 0`
-- partial single internal total: about `27.11ms`
+- partial single internal total: about `23.82ms`
   - `fileReadCount: 1`
   - `metadataReuseCount: 80`
   - `reparsedFileCount: 1`
-- partial multi internal total: about `24.28ms`
+- partial multi internal total: about `21.74ms`
   - `fileReadCount: 2`
   - `metadataReuseCount: 79`
   - `reparsedFileCount: 2`

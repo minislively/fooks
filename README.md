@@ -80,11 +80,11 @@ Current verification snapshot:
   - `FormSection.tsx`: 34.59% reduction
   - `DashboardPanel.tsx`: 46.63% reduction
 - latest benchmark baseline (`benchmarks/results/latest/benchmark.json`):
-  - cold avg: 382.22ms
-  - warm avg: 261.29ms
-  - partial single avg: 300.95ms
-  - partial multi avg: 300.07ms
-  - rescan after invalidation avg: 400.66ms
+  - cold avg: 325.65ms
+  - warm avg: 235.75ms
+  - partial single avg: 255.96ms
+  - partial multi avg: 254.47ms
+  - rescan after invalidation avg: 324.04ms
   - scan observability now captures:
     - step timings (`discovery`, `stat`, `fileRead`, `hash`, `cacheRead`, `extract`, `cacheWrite`, `indexWrite`, `total`)
     - skip/hit/miss structure (`metadataReuseCount`, `fileReadCount`, `reparsedFileCount`)
