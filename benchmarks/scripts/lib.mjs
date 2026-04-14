@@ -105,9 +105,30 @@ export function writeResultArtifacts(fileName, payload, runId = payload.runId ??
   ensureResultsDirs();
   const latestPath = path.join(latestResultsRoot, fileName);
   const historyPath = path.join(historyResultsRoot, `${runId.replace(/[:.]/g, "-")}-${fileName}`);
-  fs.writeFileSync(latestPath, JSON.stringify(payload, null, 2));
-  fs.writeFileSync(historyPath, JSON.stringify(payload, null, 2));
-  return { latestPath, historyPath };
+  const serialize = measure(() => JSON.stringify(payload, null, 2));
+  const latestWrite = measure(() => fs.writeFileSync(latestPath, serialize.value));
+  const historyWrite = measure(() => fs.writeFileSync(historyPath, serialize.value));
+  return {
+    latestPath,
+    historyPath,
+    harnessBreakdown: {
+      artifactSerializeMs: serialize.durationMs,
+      latestArtifactWriteMs: latestWrite.durationMs,
+      historyArtifactWriteMs: historyWrite.durationMs,
+      artifactWriteMs: round(latestWrite.durationMs + historyWrite.durationMs),
+    },
+  };
+}
+
+export function mergeHarnessBreakdown(base = {}, addition = {}) {
+  const merged = { ...base, ...addition };
+  if (base?.stdoutParseMsByScenario || addition?.stdoutParseMsByScenario) {
+    merged.stdoutParseMsByScenario = {
+      ...(base?.stdoutParseMsByScenario ?? {}),
+      ...(addition?.stdoutParseMsByScenario ?? {}),
+    };
+  }
+  return merged;
 }
 
 export function summariseNumbers(values) {
@@ -125,7 +146,9 @@ export function aggregateScenario(samples) {
   const counts = samples[0];
   const summary = summariseNumbers(durations);
   const observability = aggregateObservability(samples.map((sample) => sample.observability).filter(Boolean));
-  const runtimeBreakdown = deriveRuntimeBreakdown(summary.avgMs, observability);
+  const commandPathBreakdown = aggregateNumericObjects(samples.map((sample) => sample.commandPathBreakdown), {});
+  const transportStatuses = samples.map((sample) => sample.timingTransportStatus);
+  const runtimeBreakdown = deriveRuntimeBreakdown(summary.avgMs, observability, commandPathBreakdown, transportStatuses);
   return {
     ...summary,
     fileCount: counts.fileCount,
@@ -159,24 +182,77 @@ function aggregateObservability(samples) {
   };
 }
 
-function deriveRuntimeBreakdown(cliWallMs, observability) {
+function aggregateTransportStatus(statuses) {
+  if (!statuses.length) return "missing";
+  if (statuses.every((status) => status === "captured")) return "captured";
+  if (statuses.some((status) => status === "captured")) return "partial";
+  if (statuses.some((status) => status === "invalid")) return "invalid";
+  return "missing";
+}
+
+function deriveRuntimeBreakdown(cliWallMs, observability, commandPathBreakdown = {}, transportStatuses = []) {
   const scanCoreMs = round(observability?.timingsMs?.total ?? 0);
   const outsideScanMs = round(Math.max(0, cliWallMs - scanCoreMs));
+  const commandDispatchMs = round(commandPathBreakdown.commandDispatchMs ?? 0);
+  const resultSerializeMs = round(commandPathBreakdown.resultSerializeMs ?? 0);
+  const stdoutWriteMs = round(commandPathBreakdown.stdoutWriteMs ?? 0);
+  const commandPathMeasuredMs = round(commandDispatchMs + resultSerializeMs + stdoutWriteMs);
+  const commandPathUnattributedMs = round(Math.max(0, outsideScanMs - commandPathMeasuredMs));
   return {
     cliWallMs: round(cliWallMs),
     scanCoreMs,
     outsideScanMs,
     scanCoreRatio: cliWallMs > 0 ? round(scanCoreMs / cliWallMs, 4) : 0,
     outsideScanRatio: cliWallMs > 0 ? round(outsideScanMs / cliWallMs, 4) : 0,
+    outsideScanBreakdown: {
+      commandDispatchMs,
+      resultSerializeMs,
+      stdoutWriteMs,
+      commandPathMeasuredMs,
+      commandPathUnattributedMs,
+      transportStatus: aggregateTransportStatus(transportStatuses),
+    },
   };
 }
 
-export function runCliJson(args, cwd = repoRoot, envOverrides = {}) {
-  return JSON.parse(execFileSync(process.execPath, [cliPath, ...args], {
-    cwd,
-    encoding: "utf8",
-    env: { ...process.env, ...envOverrides },
-  }));
+function readBenchTimingPayload(timingPath) {
+  if (!fs.existsSync(timingPath)) {
+    return { status: "missing", commandPathBreakdown: {} };
+  }
+
+  try {
+    const payload = JSON.parse(fs.readFileSync(timingPath, "utf8"));
+    return {
+      status: payload?.command === "scan" && payload?.schemaVersion === 1 ? "captured" : "invalid",
+      commandPathBreakdown: payload?.commandPathBreakdown ?? {},
+    };
+  } catch {
+    return { status: "invalid", commandPathBreakdown: {} };
+  } finally {
+    fs.rmSync(timingPath, { force: true });
+  }
+}
+
+function runCliJsonWithTiming(args, cwd = repoRoot, envOverrides = {}) {
+  const timingDir = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-bench-timing-"));
+  const timingPath = path.join(timingDir, "command-path.json");
+  try {
+    const cliExecution = measure(() => execFileSync(process.execPath, [cliPath, ...args], {
+      cwd,
+      encoding: "utf8",
+      env: { ...process.env, ...envOverrides, FOOKS_BENCH_TIMING_PATH: timingPath },
+    }));
+    const stdoutParse = measure(() => JSON.parse(cliExecution.value));
+    const timingPayload = readBenchTimingPayload(timingPath);
+    return {
+      cliWallMs: cliExecution.durationMs,
+      stdoutParseMs: stdoutParse.durationMs,
+      value: stdoutParse.value,
+      timingPayload,
+    };
+  } finally {
+    fs.rmSync(timingDir, { recursive: true, force: true });
+  }
 }
 
 export function measure(fn) {
@@ -234,14 +310,17 @@ export function clearProjectState(cwd) {
 }
 
 export function runScanScenario(cwd, changedFileCount = 0, invalidatedFileCount = 0) {
-  const { durationMs, value } = measure(() => runCliJson(["scan"], cwd));
+  const { cliWallMs, stdoutParseMs, value, timingPayload } = runCliJsonWithTiming(["scan"], cwd);
   return {
-    durationMs,
+    durationMs: cliWallMs,
     fileCount: value.files.length,
     changedFileCount,
     cacheHitCount: value.reusedCacheEntries,
     cacheMissCount: value.refreshedEntries,
     invalidatedFileCount,
+    stdoutParseMs,
+    commandPathBreakdown: timingPayload.commandPathBreakdown,
+    timingTransportStatus: timingPayload.status,
     observability: value.observability,
     result: value,
   };
@@ -296,12 +375,23 @@ export function runScanCacheSuite({ repeatCount = resolveRepeatCount() } = {}) {
     rescanAfterInvalidation: aggregateScenario(rescanAfterInvalidationSamples),
   };
 
+  const harnessBreakdown = {
+    stdoutParseMsByScenario: {
+      coldAvgMs: round(mean(coldSamples.map((sample) => sample.stdoutParseMs))),
+      warmAvgMs: round(mean(warmSamples.map((sample) => sample.stdoutParseMs))),
+      partialSingleAvgMs: round(mean(partialSingleSamples.map((sample) => sample.stdoutParseMs))),
+      partialMultiAvgMs: round(mean(partialMultiSamples.map((sample) => sample.stdoutParseMs))),
+      rescanAfterInvalidationAvgMs: round(mean(rescanAfterInvalidationSamples.map((sample) => sample.stdoutParseMs))),
+    },
+  };
+
   return {
     kind: "scan-cache-bench",
     layer: "cli-e2e",
     repeatCount,
     totalFiles,
     kindCounts,
+    harnessBreakdown,
     runs,
     ratios: {
       warmVsCold: round(runs.warm.avgMs / runs.cold.avgMs),
@@ -507,6 +597,24 @@ export function printSummaryLines(lines) {
   }
 }
 
+export function formatOutsideScanBreakdown(run) {
+  const breakdown = run.runtimeBreakdown.outsideScanBreakdown;
+  return `dispatch ${breakdown.commandDispatchMs}ms / serialize ${breakdown.resultSerializeMs}ms / stdout ${breakdown.stdoutWriteMs}ms / unattributed ${breakdown.commandPathUnattributedMs}ms (${breakdown.transportStatus})`;
+}
+
+export function formatHarnessBreakdown(harnessBreakdown = {}) {
+  const warmParse = harnessBreakdown.stdoutParseMsByScenario?.warmAvgMs;
+  const artifactWriteMs = harnessBreakdown.artifactWriteMs;
+  const parts = [];
+  if (typeof warmParse === "number") {
+    parts.push(`warm stdout parse ${warmParse}ms`);
+  }
+  if (typeof artifactWriteMs === "number") {
+    parts.push(`artifact write ${artifactWriteMs}ms`);
+  }
+  return parts.length ? parts.join(" / ") : "n/a";
+}
+
 export function scanCacheSummary(report, latestPath) {
   return [
     `fooks benchmark | scan-cache | latest: ${relativeToRepo(latestPath)}`,
@@ -516,6 +624,8 @@ export function scanCacheSummary(report, latestPath) {
     `- partial(multi) avg: ${report.runs.partialMulti.avgMs}ms (${report.ratios.partialMultiVsCold}x of cold)`,
     `- rescan after invalidation avg: ${report.runs.rescanAfterInvalidation.avgMs}ms`,
     `- warm runtime split: cli ${report.runs.warm.runtimeBreakdown.cliWallMs}ms / scan ${report.runs.warm.runtimeBreakdown.scanCoreMs}ms / outside-scan ${report.runs.warm.runtimeBreakdown.outsideScanMs}ms`,
+    `- warm outside-scan breakdown: ${formatOutsideScanBreakdown(report.runs.warm)}`,
+    `- harness overhead: ${formatHarnessBreakdown(report.harnessBreakdown)}`,
   ];
 }
 

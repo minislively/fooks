@@ -729,6 +729,26 @@ test("scan only refreshes changed files after cache warm-up", () => {
   assert.notEqual(indexEntry.fileHash, firstScan.files.find((item) => item.filePath === indexEntry.filePath).fileHash);
 });
 
+test("scan writes benchmark-only command-path timings to a side channel without changing stdout", () => {
+  const tempDir = makeTempProject();
+  const timingPath = path.join(os.tmpdir(), `fooks-bench-timing-${Date.now()}.json`);
+  const stdout = runText(["scan"], tempDir, { FOOKS_BENCH_TIMING_PATH: timingPath });
+  const parsed = JSON.parse(stdout);
+  assert.ok(Array.isArray(parsed.files));
+  assert.equal(parsed.commandPathBreakdown, undefined);
+  assert.equal(parsed.schemaVersion, undefined);
+  assert.ok(fs.existsSync(timingPath));
+
+  const timingPayload = JSON.parse(fs.readFileSync(timingPath, "utf8"));
+  assert.equal(timingPayload.schemaVersion, 1);
+  assert.equal(timingPayload.command, "scan");
+  assert.ok(timingPayload.commandPathBreakdown.commandDispatchMs >= 0);
+  assert.ok(timingPayload.commandPathBreakdown.resultSerializeMs >= 0);
+  assert.ok(timingPayload.commandPathBreakdown.stdoutWriteMs >= 0);
+
+  fs.rmSync(timingPath, { force: true });
+});
+
 test("value-proof gate shows >=25% reduction on two long fixtures", () => {
   const compressed = reductionMetrics(path.join(repoRoot, "fixtures", "compressed", "FormSection.tsx"));
   const hybrid = reductionMetrics(path.join(repoRoot, "fixtures", "hybrid", "DashboardPanel.tsx"));

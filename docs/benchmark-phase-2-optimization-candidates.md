@@ -9,15 +9,23 @@ This note updates the optimization backlog after the first scan/discovery/cache-
 
 ## Latest snapshot
 
-- cold avg: `316.42ms`
-- warm avg: `230.4ms`
-- partial single avg: `252.28ms`
-- partial multi avg: `247.83ms`
-- rescan after invalidation avg: `312.9ms`
+- cold avg: `325.96ms`
+- warm avg: `235.53ms`
+- partial single avg: `260.66ms`
+- partial multi avg: `252.84ms`
+- rescan after invalidation avg: `324.38ms`
 - warm runtime split:
-  - CLI wall time: `230.4ms`
-  - internal scan total: `8ms`
-  - outside-scan overhead: `222.4ms`
+  - CLI wall time: `235.53ms`
+  - internal scan total: `8.23ms`
+  - outside-scan overhead: `227.3ms`
+- warm outside-scan command-path breakdown:
+  - command dispatch: `0.22ms`
+  - result serialization: `0.55ms`
+  - stdout write: `1.31ms`
+  - command-path unattributed residual: `225.22ms`
+- benchmark harness overhead:
+  - warm stdout parse: `0.19ms`
+  - artifact write: `0.63ms`
 - extract reduction:
   - `SimpleButton` → `raw` (no reduction target)
   - `FormSection` → `34.59%`
@@ -32,6 +40,8 @@ The benchmark artifact now carries scan observability that did not exist in phas
 - discovery counters (`directoriesVisited`, `filesVisited`, `componentFileCount`, `linkedTsCount`, import probe/cache-hit counts)
 - per-scenario slow-file summaries
 - per-scenario runtime breakdowns (`cliWallMs`, `scanCoreMs`, `outsideScanMs`, ratios)
+- per-scenario outside-scan command-path buckets (`commandDispatchMs`, `resultSerializeMs`, `stdoutWriteMs`, `commandPathUnattributedMs`)
+- suite-level harness buckets (`stdoutParseMsByScenario`, `artifactSerializeMs`, `artifactWriteMs`)
 
 The runtime behavior also changed conservatively:
 
@@ -45,23 +55,27 @@ The runtime behavior also changed conservatively:
 
 The top-line benchmark numbers still show warm/partial runs in the `230–252ms` range, but the new runtime split makes the gap explicit:
 
-- warm internal total: about `8ms`
-  - `outsideScanMs: 222.4ms`
+- warm internal total: about `8.23ms`
+  - `outsideScanMs: 227.3ms`
+  - `commandDispatchMs: 0.22ms`
+  - `resultSerializeMs: 0.55ms`
+  - `stdoutWriteMs: 1.31ms`
+  - `commandPathUnattributedMs: 225.22ms`
   - `fileReadCount: 0`
   - `metadataReuseCount: 81`
   - `reparsedFileCount: 0`
-- partial single internal total: about `23.95ms`
-  - `outsideScanMs: 228.33ms`
+- partial single internal total: about `26.01ms`
+  - `outsideScanMs: 234.65ms`
   - `fileReadCount: 1`
   - `metadataReuseCount: 80`
   - `reparsedFileCount: 1`
-- partial multi internal total: about `20.37ms`
-  - `outsideScanMs: 227.46ms`
+- partial multi internal total: about `21.24ms`
+  - `outsideScanMs: 231.6ms`
   - `fileReadCount: 2`
   - `metadataReuseCount: 79`
   - `reparsedFileCount: 2`
 
-**Implication:** the remaining gap in CLI-visible benchmark time is no longer primarily “unchanged files are being reread and reparsed.” That part of the path is now mostly under control, and the next measurement target is clearly the work happening outside the internal scan core.
+**Implication:** the remaining gap in CLI-visible benchmark time is no longer primarily “unchanged files are being reread and reparsed.” That part of the path is now mostly under control. The new breakdown also shows that command dispatch, serialization, stdout writes, and benchmark-harness parsing are all tiny compared with the still-large unattributed residual, so the next safe bucket should be chosen from CLI/bootstrap/process overhead before revisiting extract or decide work.
 
 ### 2. Cold/rescan cost is still dominated by extract + cache-write, not decide
 
@@ -89,15 +103,16 @@ Now that warm/partial scans avoid rereading unchanged files and the runtime spli
 
 Candidate directions:
 
-- measure CLI/process startup overhead more explicitly
-- inspect JSON artifact construction / serialization overhead in the benchmark path
-- reduce duplicated object construction between scan results and benchmark envelopes
-- audit whether history/latest writes are paying avoidable cost in local loops
+- instrument CLI/process startup overhead more explicitly inside the remaining unattributed residual
+- inspect module-load / bootstrap cost before command dispatch
+- reduce duplicated command-path object construction only if it materially contributes to the unattributed bucket
+- keep artifact-write tuning behind bootstrap work, because current harness timings are sub-millisecond
 
 Why first:
 
 - the new observability narrowed the problem
-- remaining user-visible cost is now likely outside the old reread/reparse path
+- remaining user-visible cost is now overwhelmingly outside the old reread/reparse path
+- the largest **safe** bucket is the unattributed CLI/process residual, not benchmark artifact persistence
 
 ### P1 — Cold-path extract/cache-write cost
 
@@ -141,8 +156,8 @@ Do **not** lead with these unless new benchmark evidence changes the ranking:
 
 ## Suggested next experiments
 
-1. Capture serialization/write timings for benchmark artifact generation separately from core scan timings.
-2. Measure CLI bootstrap / command-dispatch overhead independently from benchmark artifact persistence.
+1. Split the unattributed residual further into process launch / module load / command bootstrap if a low-risk seam exists.
+2. Confirm whether command dispatch stays negligible once that finer split lands.
 3. Run the benchmark corpus with larger `FOOKS_BENCH_COPY_COUNT` values to see whether discovery or extract scales worse.
 4. Add one or two borderline fixtures before any extract/fast-path redesign.
 
@@ -155,4 +170,4 @@ A follow-up optimization PR should answer all of these with benchmark evidence:
 3. What stayed correct? (`npm test`, `npm run bench:gate`, benchmark JSON contract)
 4. Did the change reduce real user-visible cost, or only move work between buckets?
 
-That keeps phase-2 work grounded in the new observability instead of returning to intuition-led tuning.
+That keeps phase-2 work grounded in the new observability instead of returning to intuition-led tuning, and it preserves the rule that the next optimization PR targets the **largest safe bucket**, not just the largest bucket on paper.

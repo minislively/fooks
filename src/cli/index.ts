@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 import { ensureProjectDataDirs, configPath } from "../core/paths";
 import { scanProject } from "../core/scan";
 import { discoverProjectFiles } from "../core/discover";
@@ -18,6 +19,47 @@ import type { ExtractionResult } from "../core/schema";
 
 function print(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));
+}
+
+function roundMs(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+function printWithTimings(value: unknown): { resultSerializeMs: number; stdoutWriteMs: number } {
+  const serializeStartedAt = performance.now();
+  const serialized = JSON.stringify(value, null, 2);
+  const resultSerializeMs = roundMs(performance.now() - serializeStartedAt);
+  const stdoutStartedAt = performance.now();
+  process.stdout.write(`${serialized}\n`);
+  const stdoutWriteMs = roundMs(performance.now() - stdoutStartedAt);
+  return { resultSerializeMs, stdoutWriteMs };
+}
+
+function maybeWriteBenchTiming(
+  command: string,
+  breakdown: Record<string, number>,
+): void {
+  const timingPath = process.env.FOOKS_BENCH_TIMING_PATH?.trim();
+  if (!timingPath) {
+    return;
+  }
+
+  try {
+    fs.writeFileSync(
+      timingPath,
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          command,
+          commandPathBreakdown: breakdown,
+        },
+        null,
+        2,
+      ),
+    );
+  } catch {
+    // Benchmark-only transport failures must never change default CLI behavior.
+  }
 }
 
 function requireFilePath(maybePath: string | undefined): string {
@@ -144,6 +186,7 @@ async function run(): Promise<void> {
   const invokedName = path.basename(process.argv[1] ?? "fooks");
   const cliName = isRecognizedCliName(invokedName) ? invokedName : "fooks";
   const displayCliName = cliName;
+  const commandStartedAt = performance.now();
 
   switch (command) {
     case "init": {
@@ -168,8 +211,14 @@ async function run(): Promise<void> {
     }
     case "scan": {
       ensureProjectDataDirs();
+      const commandDispatchMs = roundMs(performance.now() - commandStartedAt);
       const result = scanProject();
-      print(result);
+      const { resultSerializeMs, stdoutWriteMs } = printWithTimings(result);
+      maybeWriteBenchTiming("scan", {
+        commandDispatchMs,
+        resultSerializeMs,
+        stdoutWriteMs,
+      });
       return;
     }
     case "extract": {
