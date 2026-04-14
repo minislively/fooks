@@ -2,19 +2,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { ensureProjectDataDirs, configPath } from "../core/paths";
-import { scanProject } from "../core/scan";
-import { discoverProjectFiles } from "../core/discover";
-import { extractFile } from "../core/extract";
-import { toModelFacingPayload } from "../core/payload/model-facing";
-import { decideMode } from "../core/decide";
-import { attachCodex } from "../adapters/codex";
-import { attachClaude } from "../adapters/claude";
-import { decideCodexPreRead } from "../adapters/codex-pre-read";
-import { handleCodexRuntimeHook } from "../adapters/codex-runtime-hook";
-import { handleCodexNativeHookPayload } from "../adapters/codex-native-hook";
-import { installCodexHookPreset } from "../adapters/codex-hook-preset";
-import { readCodexTrustStatus } from "../adapters/codex-runtime-trust";
 import type { ExtractionResult } from "../core/schema";
 
 function print(value: unknown): void {
@@ -78,7 +65,8 @@ function asBase(result: ExtractionResult): Omit<ExtractionResult, "mode"> {
   return rest;
 }
 
-function resolveAttachSampleFile(cwd = process.cwd()): string {
+async function resolveAttachSampleFile(cwd = process.cwd()): Promise<string> {
+  const { discoverProjectFiles } = await import("../core/discover.js");
   const target = discoverProjectFiles(cwd).find((item) => item.kind === "component");
   if (!target) {
     throw new Error("No React/TSX component file found for attach contract proof");
@@ -190,6 +178,7 @@ async function run(): Promise<void> {
 
   switch (command) {
     case "init": {
+      const { ensureProjectDataDirs, configPath } = await import("../core/paths.js");
       ensureProjectDataDirs();
       const config = configPath();
       if (!fs.existsSync(config)) {
@@ -210,6 +199,10 @@ async function run(): Promise<void> {
       return;
     }
     case "scan": {
+      const [{ ensureProjectDataDirs }, { scanProject }] = await Promise.all([
+        import("../core/paths.js"),
+        import("../core/scan.js"),
+      ]);
       ensureProjectDataDirs();
       const commandDispatchMs = roundMs(performance.now() - commandStartedAt);
       const result = scanProject();
@@ -222,12 +215,22 @@ async function run(): Promise<void> {
       return;
     }
     case "extract": {
+      const { extractFile } = await import("../core/extract.js");
       const { filePath: file, modelPayload } = parseExtractArgs(rest);
       const result = extractFile(file);
-      print(modelPayload ? toModelFacingPayload(result) : result);
+      if (modelPayload) {
+        const { toModelFacingPayload } = await import("../core/payload/model-facing.js");
+        print(toModelFacingPayload(result));
+        return;
+      }
+      print(result);
       return;
     }
     case "decide": {
+      const [{ extractFile }, { decideMode }] = await Promise.all([
+        import("../core/extract.js"),
+        import("../core/decide.js"),
+      ]);
       const file = requireFilePath(arg1);
       const extracted = extractFile(file);
       const result = decideMode(asBase(extracted));
@@ -239,11 +242,15 @@ async function run(): Promise<void> {
       if (runtime !== "codex" && runtime !== "claude") {
         throw new Error("attach expects 'codex' or 'claude'");
       }
-      const sampleFile = resolveAttachSampleFile();
+      const sampleFile = await resolveAttachSampleFile();
       const result =
         runtime === "codex"
-          ? attachCodex(sampleFile, process.cwd(), `${displayCliName} codex-runtime-hook --native-hook`)
-          : attachClaude(sampleFile);
+          ? (await import("../adapters/codex.js")).attachCodex(
+              sampleFile,
+              process.cwd(),
+              `${displayCliName} codex-runtime-hook --native-hook`,
+            )
+          : (await import("../adapters/claude.js")).attachClaude(sampleFile);
       print(result);
       return;
     }
@@ -251,6 +258,7 @@ async function run(): Promise<void> {
       if (arg1 !== "codex-hooks") {
         throw new Error("install expects 'codex-hooks'");
       }
+      const { installCodexHookPreset } = await import("../adapters/codex-hook-preset.js");
       print(installCodexHookPreset(displayCliName));
       return;
     }
@@ -258,17 +266,21 @@ async function run(): Promise<void> {
       if (arg1 !== "codex") {
         throw new Error("status expects 'codex'");
       }
+      const { readCodexTrustStatus } = await import("../adapters/codex-runtime-trust.js");
       print(readCodexTrustStatus(process.cwd()));
       return;
     }
     case "codex-pre-read": {
+      const { decideCodexPreRead } = await import("../adapters/codex-pre-read.js");
       const file = requireFilePath(arg1);
       print(decideCodexPreRead(file, process.cwd()));
       return;
     }
     case "codex-runtime-hook": {
+      const { handleCodexRuntimeHook } = await import("../adapters/codex-runtime-hook.js");
       const options = parseCodexRuntimeHookArgs(rest);
       if (options.nativeHook) {
+        const { handleCodexNativeHookPayload } = await import("../adapters/codex-native-hook.js");
         const payload = await readStdinJson();
         const output = handleCodexNativeHookPayload(payload, process.cwd());
         if (output) {

@@ -80,17 +80,27 @@ Current verification snapshot:
   - `FormSection.tsx`: 34.59% reduction
   - `DashboardPanel.tsx`: 46.63% reduction
 - latest benchmark baseline (`benchmarks/results/latest/benchmark.json`):
-  - cold avg: 325.96ms
-  - warm avg: 235.53ms
-  - partial single avg: 260.66ms
-  - partial multi avg: 252.84ms
-  - rescan after invalidation avg: 324.38ms
+  - cold avg: 324.18ms
+  - warm avg: 236.21ms
+  - partial single avg: 263.52ms
+  - partial multi avg: 263.7ms
+  - rescan after invalidation avg: 331.62ms
+  - warm runtime split:
+    - CLI wall: 236.21ms
+    - scan core: 8.54ms
+    - outside-scan: 227.67ms
+  - warm outside-scan breakdown:
+    - command dispatch: 148.22ms
+    - result serialization: 0.12ms
+    - stdout write: 3.04ms
+    - unattributed residual: 76.29ms
   - scan observability now captures:
     - step timings (`discovery`, `stat`, `fileRead`, `hash`, `cacheRead`, `extract`, `cacheWrite`, `indexWrite`, `total`)
     - skip/hit/miss structure (`metadataReuseCount`, `fileReadCount`, `reparsedFileCount`)
     - top slow files per scenario
     - outside-scan command-path breakdown (`commandDispatchMs`, `resultSerializeMs`, `stdoutWriteMs`, `commandPathUnattributedMs`)
     - benchmark-harness overhead (`stdoutParseMsByScenario`, `artifactWriteMs`)
+- current optimization read: unchanged-file rereads are under control; the next safe bucket is the now-measured scan command startup/module-load path, not stdout or artifact writes
 - optimization follow-up ranking: [`docs/benchmark-phase-2-optimization-candidates.md`](docs/benchmark-phase-2-optimization-candidates.md)
 
 ## Model-facing payload
