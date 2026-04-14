@@ -17,7 +17,7 @@ import { readCodexTrustStatus } from "../adapters/codex-runtime-trust";
 import type { ExtractionResult } from "../core/schema";
 
 function print(value: unknown): void {
-  console.log(JSON.stringify(value, null, 2));
+  console.log(JSON.stringify(value));
 }
 
 function requireFilePath(maybePath: string | undefined): string {
