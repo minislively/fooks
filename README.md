@@ -35,7 +35,7 @@ fooks attach codex
 fooks attach claude
 ```
 
-Early Phase 1 drafts may still refer to `fe-lens`, but the shipping product name and all supported runtime/storage names are now `fooks`.
+The shipping product name and all supported runtime/storage names are `fooks`.
 
 ## Account context
 

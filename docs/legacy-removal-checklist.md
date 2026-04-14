@@ -1,29 +1,19 @@
-# Legacy Removal Checklist
+# Naming Canonicalization Record
 
-This document records the completed removal of legacy compatibility layers:
+The repo now supports only canonical `fooks` naming for CLI, project state,
+runtime manifests, and environment variables.
 
-- legacy CLI alias: `fe-lens`
-- legacy project state dir: `.fe-lens/`
-- legacy env prefixes: `FE_LENS_*`
+## Completed cleanup
 
-The repo now supports only canonical `fooks` naming for CLI, project state, and environment variables.
+- public CLI/package/runtime naming converged on `fooks`
+- project state naming converged on `.fooks/`
+- environment variable naming converged on `FOOKS_*`
+- tests and docs were updated to canonical names only
 
-## Removal summary
-
-Completed removal steps:
-
-1. removed the deprecated `fxxks` CLI alias and `#fxxks-*` escape hatches
-2. removed the `fe-lens` CLI alias
-3. removed `.fe-lens/` fallback reads
-4. removed `FE_LENS_*` fallback reads
-5. updated tests/docs to canonical `fooks` names only
-
-## Post-removal rule
+## Rule going forward
 
 Keep future changes aligned to canonical names only:
 
 - CLI / package / hook command: `fooks`
 - project state dir: `.fooks/`
 - env names: `FOOKS_*`
-
-Treat any remaining `fe-lens` mention as historical documentation, not supported behavior.

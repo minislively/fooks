@@ -63,7 +63,7 @@ Current rule:
 - `.fooks` is the only supported internal project-state path
 - `FOOKS_*` is the only supported env prefix
 - `fooks` is the only supported CLI/package/runtime name
-- future rename work should treat `fe-lens` references as historical notes only
+- future rename work should stay on canonical `fooks` naming only
 
 For the completed removal record, see
 [`docs/legacy-removal-checklist.md`](./legacy-removal-checklist.md).
