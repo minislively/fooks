@@ -134,11 +134,28 @@ async function readStdinJson(): Promise<Record<string, unknown>> {
   return raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
 }
 
+function isRecognizedCliName(name: string): boolean {
+  return new Set(["fooks", "fxxks", "fe-lens"]).has(name);
+}
+
+function preferredCliName(cliName: string): string {
+  return cliName === "fxxks" ? "fooks" : cliName;
+}
+
+function warnDeprecatedAlias(cliName: string, command: string | undefined): void {
+  if (cliName !== "fxxks" || command === "codex-runtime-hook") {
+    return;
+  }
+  console.error("Warning: 'fxxks' is deprecated; use 'fooks' instead.");
+}
+
 async function run(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   const [arg1] = rest;
   const invokedName = path.basename(process.argv[1] ?? "fooks");
-  const cliName = new Set(["fooks", "fxxks", "fe-lens"]).has(invokedName) ? invokedName : "fooks";
+  const cliName = isRecognizedCliName(invokedName) ? invokedName : "fooks";
+  const displayCliName = preferredCliName(cliName);
+  warnDeprecatedAlias(cliName, command);
 
   switch (command) {
     case "init": {
@@ -186,7 +203,10 @@ async function run(): Promise<void> {
         throw new Error("attach expects 'codex' or 'claude'");
       }
       const sampleFile = resolveAttachSampleFile();
-      const result = runtime === "codex" ? attachCodex(sampleFile, process.cwd(), `${cliName} codex-runtime-hook --native-hook`) : attachClaude(sampleFile);
+      const result =
+        runtime === "codex"
+          ? attachCodex(sampleFile, process.cwd(), `${displayCliName} codex-runtime-hook --native-hook`)
+          : attachClaude(sampleFile);
       print(result);
       return;
     }
@@ -194,7 +214,7 @@ async function run(): Promise<void> {
       if (arg1 !== "codex-hooks") {
         throw new Error("install expects 'codex-hooks'");
       }
-      print(installCodexHookPreset(cliName));
+      print(installCodexHookPreset(displayCliName));
       return;
     }
     case "status": {
@@ -235,13 +255,13 @@ async function run(): Promise<void> {
     }
     default:
       console.error(`Unknown command: ${command ?? "<none>"}`);
-      console.error(`Usage: ${cliName} <init|scan|extract|decide|attach|install|status|codex-pre-read|codex-runtime-hook>`);
-      console.error(`       ${cliName} extract <file> [--model-payload] [--json]`);
-      console.error(`       ${cliName} install codex-hooks`);
-      console.error(`       ${cliName} codex-pre-read <file> [--json]`);
-      console.error(`       ${cliName} status codex`);
-      console.error(`       ${cliName} codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop> [--session-id <id>] [--prompt <text>] [--json]`);
-      console.error(`       ${cliName} codex-runtime-hook --native-hook`);
+      console.error(`Usage: ${displayCliName} <init|scan|extract|decide|attach|install|status|codex-pre-read|codex-runtime-hook>`);
+      console.error(`       ${displayCliName} extract <file> [--model-payload] [--json]`);
+      console.error(`       ${displayCliName} install codex-hooks`);
+      console.error(`       ${displayCliName} codex-pre-read <file> [--json]`);
+      console.error(`       ${displayCliName} status codex`);
+      console.error(`       ${displayCliName} codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop> [--session-id <id>] [--prompt <text>] [--json]`);
+      console.error(`       ${displayCliName} codex-runtime-hook --native-hook`);
       process.exitCode = 1;
   }
 }

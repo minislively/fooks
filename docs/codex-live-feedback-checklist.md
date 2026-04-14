@@ -137,4 +137,4 @@ components/QuestionAnswerForm.tsx 원문 기준으로 다시 봐줘.
 
 
 호환성 참고:
-- legacy alias `fxxks` / `#fxxks-full-read` 도 계속 동작합니다.
+- deprecated legacy alias `fxxks` / `#fxxks-full-read` 도 계속 동작하지만, 신규 사용은 `fooks` 기준으로 맞추세요.

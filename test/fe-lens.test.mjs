@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { createRequire } from "node:module";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 
 const repoRoot = process.cwd();
 const cli = path.join(repoRoot, "dist", "cli", "index.js");
@@ -38,6 +38,28 @@ function runTextWithInput(args, input, cwd = repoRoot, envOverrides = {}) {
     input,
     env: { ...process.env, ...envOverrides },
   });
+}
+
+function runViaScript(scriptPath, args, cwd = repoRoot, envOverrides = {}) {
+  return spawnSync(process.execPath, [scriptPath, ...args], {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, ...envOverrides },
+  });
+}
+
+function createCliAlias(aliasName) {
+  const aliasPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), `fooks-alias-${aliasName}-`)), aliasName);
+  fs.writeFileSync(
+    aliasPath,
+    [
+      "process.argv[1] = process.argv[1] || '';",
+      `process.argv[1] = ${JSON.stringify(aliasName)};`,
+      `require(${JSON.stringify(cli)});`,
+      "",
+    ].join("\n"),
+  );
+  return aliasPath;
 }
 
 function makeTempProject(repositoryUrl = "https://github.com/minislively/temp-project.git") {
@@ -251,6 +273,14 @@ test("cli codex-pre-read reuses the same decision seam and advertises the comman
     usage = `${error.stdout ?? ""}${error.stderr ?? ""}`;
   }
   assert.match(usage, /codex-pre-read/);
+});
+
+test("deprecated fxxks alias warns and advertises fooks usage", () => {
+  const aliasCli = createCliAlias("fxxks");
+  const result = runViaScript(aliasCli, ["unknown-command"]);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /'fxxks' is deprecated; use 'fooks'/);
+  assert.match(result.stderr, /Usage: fooks <init\|scan\|extract\|decide\|attach\|install\|status\|codex-pre-read\|codex-runtime-hook>/);
 });
 
 test("runtime prompt parser finds eligible tsx/jsx paths and escape hatches", () => {
@@ -760,6 +790,22 @@ test("install codex-hooks creates a reusable hooks preset", () => {
   assert.equal(hooks.hooks.Stop[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
 });
 
+test("deprecated fxxks alias still installs the canonical fooks hook command", () => {
+  const aliasCli = createCliAlias("fxxks");
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
+  const result = runViaScript(aliasCli, ["install", "codex-hooks"], repoRoot, { FE_LENS_CODEX_HOME: codexHome });
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /'fxxks' is deprecated; use 'fooks'/);
+
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "fooks codex-runtime-hook --native-hook");
+
+  const hooks = JSON.parse(fs.readFileSync(path.join(codexHome, "hooks.json"), "utf8"));
+  assert.equal(hooks.hooks.SessionStart[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
+  assert.equal(hooks.hooks.UserPromptSubmit[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
+  assert.equal(hooks.hooks.Stop[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
+});
+
 test("install codex-hooks merges without clobbering existing hooks and stays idempotent", () => {
   const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
   const hooksPath = path.join(codexHome, "hooks.json");
@@ -840,6 +886,19 @@ test("attach codex proves contract and runtime under minislively account context
   assert.equal(status.lifecycleState, "ready");
   assert.ok(status.attachedAt);
   assert.ok(status.lastScanAt);
+});
+
+test("deprecated fxxks alias still writes canonical codex runtime bridge metadata", () => {
+  const aliasCli = createCliAlias("fxxks");
+  const tempDir = makeTempProject();
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
+  const result = runViaScript(aliasCli, ["attach", "codex"], tempDir, { FE_LENS_CODEX_HOME: codexHome });
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /'fxxks' is deprecated; use 'fooks'/);
+
+  const payload = JSON.parse(result.stdout);
+  const runtimeManifest = JSON.parse(fs.readFileSync(runtimeManifestPath(payload), "utf8"));
+  assert.equal(runtimeManifest.runtimeBridge.command, "fooks codex-runtime-hook --native-hook");
 });
 
 test("attach claude can report blocker without failing contract proof", () => {
