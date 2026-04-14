@@ -1,6 +1,6 @@
-# Phase 2 Optimization Candidates — Post-Dispatch-Sub-Bucket Profiling
+# Phase 2 Optimization Candidates — Post-Scan-Module-Load Narrowing
 
-This note updates the optimization backlog after splitting the `scan` command startup path into measurable dispatch sub-buckets.
+This note updates the optimization backlog after narrowing the previously dominant `scan` module-load cost and rerunning the benchmark suite.
 
 ## Source of truth
 
@@ -9,25 +9,25 @@ This note updates the optimization backlog after splitting the `scan` command st
 
 ## Latest snapshot
 
-- cold avg: `361.92ms`
-- warm avg: `253.95ms`
-- partial single avg: `273.89ms`
-- partial multi avg: `279.5ms`
-- rescan after invalidation avg: `423.58ms`
+- cold avg: `384.81ms`
+- warm avg: `132.09ms`
+- partial single avg: `293.92ms`
+- partial multi avg: `298.89ms`
+- rescan after invalidation avg: `379.81ms`
 - warm runtime split:
-  - CLI wall time: `253.95ms`
-  - internal scan total: `9.96ms`
-  - outside-scan overhead: `243.99ms`
+  - CLI wall time: `132.09ms`
+  - internal scan total: `12.1ms`
+  - outside-scan overhead: `119.99ms`
 - warm outside-scan command-path breakdown:
-  - command dispatch: `160.16ms`
-  - result serialization: `0.13ms`
-  - stdout write: `3.48ms`
-  - command-path measured total: `163.77ms`
-  - command-path unattributed residual: `80.22ms`
+  - command dispatch: `19.36ms`
+  - result serialization: `0.39ms`
+  - stdout write: `6.27ms`
+  - command-path measured total: `26.02ms`
+  - command-path unattributed residual: `93.97ms`
 - warm dispatch sub-breakdown:
-  - paths module import: `5.99ms`
-  - scan module import: `153.84ms`
-  - ensure project dirs: `0.29ms`
+  - paths module import: `5.62ms`
+  - scan module import: `13.47ms`
+  - ensure project dirs: `0.23ms`
   - command dispatch residual: `0.04ms`
 - benchmark harness overhead:
   - warm stdout parse: `0.22ms`
@@ -52,9 +52,9 @@ This keeps the CLI contract untouched while turning the previously broad dispatc
 
 ### 1. Warm scan core is still cheap; repeated rereads are still not the main issue
 
-Warm `scan` still spends very little time in the internal scan core.
+Warm `scan` still spends very little time in the internal scan core, even after the startup refactor.
 
-- warm internal scan total: `9.96ms`
+- warm internal scan total: `12.1ms`
 - warm unchanged-file behavior:
   - `fileReadCount: 0`
   - `metadataReuseCount: 81`
@@ -62,34 +62,34 @@ Warm `scan` still spends very little time in the internal scan core.
 
 **Implication:** the previous scan-core work remains under control.
 
-### 2. The measured dispatch bucket is now almost fully explained
+### 2. The measured dispatch bucket is no longer the dominant startup problem
 
 Warm startup numbers now show:
 
-- `commandDispatchMs: 160.16ms`
-- `pathsModuleImportMs: 5.99ms`
-- `scanModuleImportMs: 153.84ms`
-- `ensureProjectDataDirsMs: 0.29ms`
+- `commandDispatchMs: 19.36ms`
+- `pathsModuleImportMs: 5.62ms`
+- `scanModuleImportMs: 13.47ms`
+- `ensureProjectDataDirsMs: 0.23ms`
 - `commandDispatchResidualMs: 0.04ms`
 
-**Implication:** the startup bucket is no longer vague. For `scan`, command dispatch is essentially the `scan` module import cost. There is very little unexplained work left inside dispatch itself.
+**Implication:** the previous `scan` module-load hotspot collapsed. Dispatch is now small enough that it should no longer lead the backlog by itself.
 
-### 3. The next safe target is inside `scan` module load, not report plumbing
+### 3. Report plumbing is still not the next target
 
 Warm non-scan numbers still show very small costs for:
 
-- result serialization: `0.13ms`
-- stdout write: `3.48ms`
+- result serialization: `0.39ms`
+- stdout write: `6.27ms`
 - benchmark harness stdout parse: `0.22ms`
 - artifact write: `0.54ms`
 
-**Implication:** stdout/report persistence remains non-priority. The highest-value safe bucket is now the `scan` module-load path itself.
+**Implication:** stdout/report persistence remains non-priority.
 
-### 4. There is still residual outside measured dispatch, but it is no longer the best first target
+### 4. Residual outside measured dispatch is now the clearest remaining startup bucket
 
-Warm `outsideScanMs` is still `243.99ms`, with `commandPathUnattributedMs` at `80.22ms`.
+Warm `outsideScanMs` is now `119.99ms`, with `commandPathUnattributedMs` at `93.97ms`.
 
-**Implication:** there is still process/bootstrap overhead outside the measured dispatch window, but the clearest next optimization is the much larger and now-well-explained `scanModuleImportMs` bucket.
+**Implication:** after shrinking `scanModuleImportMs`, the next safe startup target is the residual process/bootstrap overhead outside the measured command path.
 
 ### 5. Cold/rescan internal work still points to extract + cache-write when startup work is exhausted
 
@@ -103,34 +103,34 @@ Cold and rescan scenarios still show the largest internal scan-core buckets in:
 
 ## Re-ranked priority order
 
-### P0 — Narrow the `scanModuleImportMs` bucket
+### P0 — Profile and narrow residual process/bootstrap overhead outside measured dispatch
 
-The best next optimization target is now explicit: the `scan` module import itself.
+The best next optimization target is now the residual startup/process overhead that still sits outside the measured dispatch window.
 
 Candidate directions:
 
-- split `src/core/scan.ts` dependencies into lighter-on-import pieces if a safe seam exists
-- defer scan-only helper imports until after startup-sensitive code paths where possible
-- reduce top-level work in modules loaded by `scan.ts`
-- keep the benchmark side-channel additive so `scanModuleImportMs` stays directly comparable
+- split the remaining startup window into safer sub-buckets if another additive seam exists
+- inspect what still happens before and after the measured command path without changing `fooks scan` semantics
+- prefer low-risk process/bootstrap instrumentation before another behavior change
+- keep the benchmark side-channel additive so residual startup time stays comparable
 
 Why first:
 
-- it is the largest safe measured bucket
-- the current pass proved dispatch residual is effectively negligible
-- it stays within the approved `scan`-only startup scope
+- the dominant measured dispatch hotspot has already been reduced
+- the largest remaining warm startup cost is now outside the measured command path
+- it stays within the approved startup-focused scope as long as the CLI contract remains unchanged
 
-### P1 — Residual process/bootstrap overhead outside measured command dispatch
+### P1 — Re-check `scanModuleImportMs` only if new residual splits point back into module-load work
 
 Candidate directions:
 
-- split the remaining `commandPathUnattributedMs` further only if another low-risk seam exists
-- inspect what still happens before/after measured dispatch without changing user-visible behavior
-- leave this behind direct module-load work unless `scanModuleImportMs` flattens first
+- keep comparing `scanModuleImportMs` to the residual bucket after each startup pass
+- revisit deeper `scan` import seams only if residual process/bootstrap profiling points back into scan-adjacent module load
+- avoid widening scope into cold-path work until startup evidence says this bucket matters again
 
 Why second:
 
-- it is still meaningful, but now smaller and less actionable than the explicit `scanModuleImportMs` bucket
+- `scanModuleImportMs` is no longer the overwhelming hotspot it was in the previous pass
 
 ### P2 — Cold-path extract/cache-write cost
 
@@ -142,7 +142,7 @@ Candidate directions:
 
 Why third:
 
-- startup/module-load is the clearer current user-visible cost center
+- startup/process overhead is still the clearer current user-visible cost center
 - cold-path internal work is still important, but no longer the next safest win
 
 ## Explicit non-priority items
@@ -159,16 +159,16 @@ Do **not** lead with these unless new benchmark evidence changes the ranking:
 
 ## Suggested next experiments
 
-1. Profile what `src/core/scan.ts` pulls in at module-load time.
-2. Time scan sub-module imports if another additive seam exists.
-3. Confirm whether reducing top-level scan-module work decreases `scanModuleImportMs` without changing `fooks scan` semantics.
-4. Revisit residual process/bootstrap timing only after the scan-module bucket flattens.
+1. Split residual process/bootstrap overhead into the next safe measured seam.
+2. Confirm whether the residual bucket can be attributed without changing `fooks scan` semantics.
+3. Keep comparing residual startup cost against `scanModuleImportMs` so work does not drift back into a solved bucket.
+4. Revisit cold-path extract/cache-write only after startup residuals flatten or stop responding.
 
 ## Decision rule for the next optimization PR
 
 A follow-up optimization PR should answer all of these with benchmark evidence:
 
-1. Which layer got faster: `scanModuleImportMs`, residual outside-scan time, or cold internal work?
+1. Which layer got faster: residual outside-scan time, `scanModuleImportMs`, or cold internal work?
 2. What specific field proves it?
 3. What stayed correct? (`npm test`, `npm run bench:gate`, benchmark JSON contract)
 4. Did the change reduce real user-visible cost, or only move work between adjacent buckets?

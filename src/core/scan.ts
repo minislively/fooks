@@ -3,9 +3,15 @@ import { performance } from "node:perf_hooks";
 import { discoverProjectFilesWithStats } from "./discover";
 import { hashText } from "./hash";
 import { readCachedExtraction, readScanIndex, writeCachedExtraction, writeScanIndex } from "./cache";
-import { extractSource } from "./extract";
 import type { IndexEntry, ScanObservability, ScanResult } from "./schema";
 import fs from "node:fs";
+
+let extractSourceModule: typeof import("./extract") | undefined;
+
+function getExtractSource(): typeof import("./extract")["extractSource"] {
+  extractSourceModule ??= require("./extract.js") as typeof import("./extract");
+  return extractSourceModule.extractSource;
+}
 
 export function scanProject(cwd = process.cwd()): ScanResult {
   const startedAt = performance.now();
@@ -85,6 +91,7 @@ export function scanProject(cwd = process.cwd()): ScanResult {
     const extracted = cached
       ? cached
       : (() => {
+          const extractSource = getExtractSource();
           const extractStartedAt = performance.now();
           const value = extractSource(target.filePath, text);
           extractMs += performance.now() - extractStartedAt;

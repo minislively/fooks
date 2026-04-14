@@ -80,24 +80,24 @@ Current verification snapshot:
   - `FormSection.tsx`: 34.59% reduction
   - `DashboardPanel.tsx`: 46.63% reduction
 - latest benchmark baseline (`benchmarks/results/latest/benchmark.json`):
-  - cold avg: 361.92ms
-  - warm avg: 253.95ms
-  - partial single avg: 273.89ms
-  - partial multi avg: 279.5ms
-  - rescan after invalidation avg: 423.58ms
+  - cold avg: 384.81ms
+  - warm avg: 132.09ms
+  - partial single avg: 293.92ms
+  - partial multi avg: 298.89ms
+  - rescan after invalidation avg: 379.81ms
   - warm runtime split:
-    - CLI wall: 253.95ms
-    - scan core: 9.96ms
-    - outside-scan: 243.99ms
+    - CLI wall: 132.09ms
+    - scan core: 12.1ms
+    - outside-scan: 119.99ms
   - warm outside-scan breakdown:
-    - command dispatch: 160.16ms
-    - result serialization: 0.13ms
-    - stdout write: 3.48ms
-    - unattributed residual: 80.22ms
+    - command dispatch: 19.36ms
+    - result serialization: 0.39ms
+    - stdout write: 6.27ms
+    - unattributed residual: 93.97ms
   - warm dispatch sub-breakdown:
-    - paths import: 5.99ms
-    - scan import: 153.84ms
-    - ensure dirs: 0.29ms
+    - paths import: 5.62ms
+    - scan import: 13.47ms
+    - ensure dirs: 0.23ms
     - dispatch residual: 0.04ms
   - scan observability now captures:
     - step timings (`discovery`, `stat`, `fileRead`, `hash`, `cacheRead`, `extract`, `cacheWrite`, `indexWrite`, `total`)
@@ -106,7 +106,7 @@ Current verification snapshot:
     - outside-scan command-path breakdown (`commandDispatchMs`, `resultSerializeMs`, `stdoutWriteMs`, `commandPathUnattributedMs`)
     - scan startup sub-buckets (`pathsModuleImportMs`, `scanModuleImportMs`, `ensureProjectDataDirsMs`, `commandDispatchResidualMs`)
     - benchmark-harness overhead (`stdoutParseMsByScenario`, `artifactWriteMs`)
-- current optimization read: unchanged-file rereads are under control, and the measured scan startup bucket is now dominated by `scan` module import time rather than stdout or artifact writes
+- current optimization read: unchanged-file rereads are under control, and the warm `scan` startup bucket dropped sharply after moving `extract` module load off the warm-hit path; the next opaque cost is residual process/bootstrap overhead outside the measured command path
 - optimization follow-up ranking: [`docs/benchmark-phase-2-optimization-candidates.md`](docs/benchmark-phase-2-optimization-candidates.md)
 
 ## Model-facing payload
