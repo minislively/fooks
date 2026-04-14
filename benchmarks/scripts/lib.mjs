@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -21,6 +21,25 @@ const require = createRequire(import.meta.url);
 const cliPath = path.join(repoRoot, "dist", "cli", "index.js");
 const { extractFile } = require(path.join(repoRoot, "dist", "core", "extract.js"));
 const { decideMode } = require(path.join(repoRoot, "dist", "core", "decide.js"));
+
+function runProcess(command, args, { cwd = repoRoot, env = process.env } = {}) {
+  const startedAt = performance.now();
+  const result = spawnSync(command, args, { cwd, env, encoding: "utf8" });
+  return {
+    durationMs: round(performance.now() - startedAt),
+    status: result.status,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
+
+function runBareNodeProcess(cwd = repoRoot) {
+  return runProcess(process.execPath, ["-e", "0"], { cwd });
+}
+
+function runCliBootstrapNoCommand(cwd = repoRoot) {
+  return runProcess(process.execPath, [cliPath], { cwd });
+}
 
 function mean(values) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -383,6 +402,20 @@ export function runScanCacheSuite({ repeatCount = resolveRepeatCount() } = {}) {
     rescanAfterInvalidation: aggregateScenario(rescanAfterInvalidationSamples),
   };
 
+  const bareNodeSamples = [];
+  const cliBootstrapSamples = [];
+
+  for (let index = 0; index < repeatCount; index += 1) {
+    const bareNode = runBareNodeProcess(repoRoot);
+    const cliBootstrap = runCliBootstrapNoCommand(repoRoot);
+    bareNodeSamples.push(bareNode.durationMs);
+    cliBootstrapSamples.push(cliBootstrap.durationMs);
+  }
+
+  const bareNodeAvgMs = round(mean(bareNodeSamples));
+  const cliBootstrapAvgMs = round(mean(cliBootstrapSamples));
+  const cliBootstrapResidualMs = round(Math.max(0, cliBootstrapAvgMs - bareNodeAvgMs));
+
   const harnessBreakdown = {
     stdoutParseMsByScenario: {
       coldAvgMs: round(mean(coldSamples.map((sample) => sample.stdoutParseMs))),
@@ -391,6 +424,9 @@ export function runScanCacheSuite({ repeatCount = resolveRepeatCount() } = {}) {
       partialMultiAvgMs: round(mean(partialMultiSamples.map((sample) => sample.stdoutParseMs))),
       rescanAfterInvalidationAvgMs: round(mean(rescanAfterInvalidationSamples.map((sample) => sample.stdoutParseMs))),
     },
+    bareNodeProcessAvgMs: bareNodeAvgMs,
+    cliBootstrapNoCommandAvgMs: cliBootstrapAvgMs,
+    cliBootstrapResidualAvgMs: cliBootstrapResidualMs,
   };
 
   return {
@@ -631,9 +667,21 @@ export function formatOutsideScanBreakdown(run) {
 export function formatHarnessBreakdown(harnessBreakdown = {}) {
   const warmParse = harnessBreakdown.stdoutParseMsByScenario?.warmAvgMs;
   const artifactWriteMs = harnessBreakdown.artifactWriteMs;
+  const bareNodeProcessAvgMs = harnessBreakdown.bareNodeProcessAvgMs;
+  const cliBootstrapNoCommandAvgMs = harnessBreakdown.cliBootstrapNoCommandAvgMs;
+  const cliBootstrapResidualAvgMs = harnessBreakdown.cliBootstrapResidualAvgMs;
   const parts = [];
   if (typeof warmParse === "number") {
     parts.push(`warm stdout parse ${warmParse}ms`);
+  }
+  if (typeof bareNodeProcessAvgMs === "number") {
+    parts.push(`bare node ${bareNodeProcessAvgMs}ms`);
+  }
+  if (typeof cliBootstrapNoCommandAvgMs === "number") {
+    parts.push(`cli bootstrap ${cliBootstrapNoCommandAvgMs}ms`);
+  }
+  if (typeof cliBootstrapResidualAvgMs === "number") {
+    parts.push(`bootstrap residual ${cliBootstrapResidualAvgMs}ms`);
   }
   if (typeof artifactWriteMs === "number") {
     parts.push(`artifact write ${artifactWriteMs}ms`);

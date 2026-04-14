@@ -82,6 +82,9 @@ test("scan-cache benchmark script emits expanded scenarios and writes the latest
   assert.ok(result.runs.warm.runtimeBreakdown.outsideScanBreakdown.commandPathUnattributedMs >= 0);
   assert.ok(["captured", "partial", "missing", "invalid"].includes(result.runs.warm.runtimeBreakdown.outsideScanBreakdown.transportStatus));
   assert.ok(result.harnessBreakdown.stdoutParseMsByScenario.warmAvgMs >= 0);
+  assert.ok(result.harnessBreakdown.bareNodeProcessAvgMs >= 0);
+  assert.ok(result.harnessBreakdown.cliBootstrapNoCommandAvgMs >= 0);
+  assert.ok(result.harnessBreakdown.cliBootstrapResidualAvgMs >= 0);
   assert.ok(result.harnessBreakdown.artifactWriteMs >= 0);
   assert.ok(fs.existsSync(result.artifacts.latestPath));
 });
@@ -122,6 +125,9 @@ test("run-all benchmark script emits the canonical envelope", () => {
   assert.ok(result.gitSha);
   assert.ok(result.suites.scanCache);
   assert.ok(result.suites.scanCache.harnessBreakdown.stdoutParseMsByScenario.warmAvgMs >= 0);
+  assert.ok(result.suites.scanCache.harnessBreakdown.bareNodeProcessAvgMs >= 0);
+  assert.ok(result.suites.scanCache.harnessBreakdown.cliBootstrapNoCommandAvgMs >= 0);
+  assert.ok(result.suites.scanCache.harnessBreakdown.cliBootstrapResidualAvgMs >= 0);
   assert.ok(result.suites.scanCache.harnessBreakdown.artifactWriteMs >= 0);
   assert.ok(result.suites.scanCache.runs.warm.runtimeBreakdown.outsideScanBreakdown.commandPathMeasuredMs >= 0);
   assert.ok(Array.isArray(result.suites.extract));

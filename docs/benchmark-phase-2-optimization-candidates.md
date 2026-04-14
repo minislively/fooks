@@ -1,6 +1,6 @@
-# Phase 2 Optimization Candidates — Post-Scan-Module-Load Narrowing
+# Phase 2 Optimization Candidates — Post-Residual-Process-Floor Profiling
 
-This note updates the optimization backlog after narrowing the previously dominant `scan` module-load cost and rerunning the benchmark suite.
+This note updates the optimization backlog after measuring how much of the remaining warm startup cost is bare Node/process floor versus fooks-specific CLI/bootstrap work.
 
 ## Source of truth
 
@@ -9,29 +9,32 @@ This note updates the optimization backlog after narrowing the previously domina
 
 ## Latest snapshot
 
-- cold avg: `384.81ms`
-- warm avg: `132.09ms`
-- partial single avg: `293.92ms`
-- partial multi avg: `298.89ms`
-- rescan after invalidation avg: `379.81ms`
+- cold avg: `648.78ms`
+- warm avg: `142.33ms`
+- partial single avg: `449.9ms`
+- partial multi avg: `398.58ms`
+- rescan after invalidation avg: `635ms`
 - warm runtime split:
-  - CLI wall time: `132.09ms`
-  - internal scan total: `12.1ms`
-  - outside-scan overhead: `119.99ms`
+  - CLI wall time: `142.33ms`
+  - internal scan total: `14.67ms`
+  - outside-scan overhead: `127.66ms`
 - warm outside-scan command-path breakdown:
-  - command dispatch: `19.36ms`
-  - result serialization: `0.39ms`
-  - stdout write: `6.27ms`
-  - command-path measured total: `26.02ms`
-  - command-path unattributed residual: `93.97ms`
+  - command dispatch: `22.51ms`
+  - result serialization: `0.18ms`
+  - stdout write: `5.84ms`
+  - command-path measured total: `28.53ms`
+  - command-path unattributed residual: `99.13ms`
 - warm dispatch sub-breakdown:
-  - paths module import: `5.62ms`
-  - scan module import: `13.47ms`
-  - ensure project dirs: `0.23ms`
+  - paths module import: `7.58ms`
+  - scan module import: `14.52ms`
+  - ensure project dirs: `0.37ms`
   - command dispatch residual: `0.04ms`
-- benchmark harness overhead:
-  - warm stdout parse: `0.22ms`
-  - artifact write: `0.54ms`
+- benchmark harness/process floor:
+  - warm stdout parse: `0.32ms`
+  - bare Node process: `90.5ms`
+  - CLI bootstrap without command: `108.72ms`
+  - CLI bootstrap residual: `18.22ms`
+  - artifact write: `0.72ms`
 - extract reduction:
   - `SimpleButton` → `raw` (no reduction target)
   - `FormSection` → `34.59%`
@@ -54,7 +57,7 @@ This keeps the CLI contract untouched while turning the previously broad dispatc
 
 Warm `scan` still spends very little time in the internal scan core, even after the startup refactor.
 
-- warm internal scan total: `12.1ms`
+- warm internal scan total: `14.67ms`
 - warm unchanged-file behavior:
   - `fileReadCount: 0`
   - `metadataReuseCount: 81`
@@ -62,34 +65,36 @@ Warm `scan` still spends very little time in the internal scan core, even after 
 
 **Implication:** the previous scan-core work remains under control.
 
-### 2. The measured dispatch bucket is no longer the dominant startup problem
+### 2. The measured dispatch bucket is still small relative to the process floor
 
 Warm startup numbers now show:
 
-- `commandDispatchMs: 19.36ms`
-- `pathsModuleImportMs: 5.62ms`
-- `scanModuleImportMs: 13.47ms`
-- `ensureProjectDataDirsMs: 0.23ms`
+- `commandDispatchMs: 22.51ms`
+- `pathsModuleImportMs: 7.58ms`
+- `scanModuleImportMs: 14.52ms`
+- `ensureProjectDataDirsMs: 0.37ms`
 - `commandDispatchResidualMs: 0.04ms`
 
-**Implication:** the previous `scan` module-load hotspot collapsed. Dispatch is now small enough that it should no longer lead the backlog by itself.
+**Implication:** the fooks-specific measured dispatch work is not the dominant startup cost anymore.
 
 ### 3. Report plumbing is still not the next target
 
 Warm non-scan numbers still show very small costs for:
 
-- result serialization: `0.39ms`
-- stdout write: `6.27ms`
-- benchmark harness stdout parse: `0.22ms`
-- artifact write: `0.54ms`
+- result serialization: `0.18ms`
+- stdout write: `5.84ms`
+- benchmark harness stdout parse: `0.32ms`
+- artifact write: `0.72ms`
 
 **Implication:** stdout/report persistence remains non-priority.
 
-### 4. Residual outside measured dispatch is now the clearest remaining startup bucket
+### 4. Most of the remaining warm startup cost now looks like process floor plus a smaller bootstrap residual
 
-Warm `outsideScanMs` is now `119.99ms`, with `commandPathUnattributedMs` at `93.97ms`.
+Warm `outsideScanMs` is now `127.66ms`, with `commandPathUnattributedMs` at `99.13ms`.
 
-**Implication:** after shrinking `scanModuleImportMs`, the next safe startup target is the residual process/bootstrap overhead outside the measured command path.
+Harness measurements now show a `bareNodeProcessAvgMs` of `90.5ms` and a `cliBootstrapResidualAvgMs` of `18.22ms`.
+
+**Implication:** most of the remaining warm startup cost is explained by raw process launch plus a much smaller fooks-specific bootstrap residual. That changes the next-priority question from “what does scan import pull in?” to “is the remaining CLI bootstrap residual worth another narrow pass, or have we reached the point where process model dominates?”
 
 ### 5. Cold/rescan internal work still points to extract + cache-write when startup work is exhausted
 
@@ -103,34 +108,34 @@ Cold and rescan scenarios still show the largest internal scan-core buckets in:
 
 ## Re-ranked priority order
 
-### P0 — Profile and narrow residual process/bootstrap overhead outside measured dispatch
+### P0 — Decide whether the remaining CLI bootstrap residual is worth another narrow pass
 
-The best next optimization target is now the residual startup/process overhead that still sits outside the measured dispatch window.
+The best next optimization target is no longer the whole residual bucket; it is the smaller fooks-controlled bootstrap residual that sits on top of the bare Node process floor.
 
 Candidate directions:
 
-- split the remaining startup window into safer sub-buckets if another additive seam exists
-- inspect what still happens before and after the measured command path without changing `fooks scan` semantics
-- prefer low-risk process/bootstrap instrumentation before another behavior change
-- keep the benchmark side-channel additive so residual startup time stays comparable
+- inspect what still happens before measured command dispatch but after raw process launch
+- only add another seam if it stays additive and keeps `fooks scan` semantics unchanged
+- compare any candidate win against the `~90ms` bare Node floor before changing more code
+- stop if the next movable bucket is too small relative to benchmark noise
 
 Why first:
 
 - the dominant measured dispatch hotspot has already been reduced
-- the largest remaining warm startup cost is now outside the measured command path
-- it stays within the approved startup-focused scope as long as the CLI contract remains unchanged
+- the harness now explains that much of the residual is not fooks-specific work
+- this is the narrowest remaining startup question that can still produce a meaningful product decision
 
-### P1 — Re-check `scanModuleImportMs` only if new residual splits point back into module-load work
+### P1 — Treat bare process launch as a structural limit unless the product model changes
 
 Candidate directions:
 
-- keep comparing `scanModuleImportMs` to the residual bucket after each startup pass
-- revisit deeper `scan` import seams only if residual process/bootstrap profiling points back into scan-adjacent module load
-- avoid widening scope into cold-path work until startup evidence says this bucket matters again
+- recognize that `bareNodeProcessAvgMs` is outside normal in-process optimization reach
+- if startup latency still matters after bootstrap residuals flatten, the next leap may require a different runtime/process model rather than more TypeScript refactors
+- do not hide this by endlessly shaving tiny in-process buckets
 
 Why second:
 
-- `scanModuleImportMs` is no longer the overwhelming hotspot it was in the previous pass
+- the process floor is now large enough that further small refactors may have sharply diminishing returns
 
 ### P2 — Cold-path extract/cache-write cost
 
@@ -159,16 +164,16 @@ Do **not** lead with these unless new benchmark evidence changes the ranking:
 
 ## Suggested next experiments
 
-1. Split residual process/bootstrap overhead into the next safe measured seam.
-2. Confirm whether the residual bucket can be attributed without changing `fooks scan` semantics.
-3. Keep comparing residual startup cost against `scanModuleImportMs` so work does not drift back into a solved bucket.
-4. Revisit cold-path extract/cache-write only after startup residuals flatten or stop responding.
+1. Decide whether another additive seam can isolate the CLI bootstrap residual beyond bare process launch.
+2. If yes, measure it without changing `fooks scan` semantics.
+3. If not, treat the current process floor as the dominant limit and shift attention to cold-path extract/cache-write or product-level runtime strategy.
+4. Only revisit scan-module import work if later evidence says that bucket regressed.
 
 ## Decision rule for the next optimization PR
 
 A follow-up optimization PR should answer all of these with benchmark evidence:
 
-1. Which layer got faster: residual outside-scan time, `scanModuleImportMs`, or cold internal work?
+1. Which layer got faster: CLI bootstrap residual, raw process floor, or cold internal work?
 2. What specific field proves it?
 3. What stayed correct? (`npm test`, `npm run bench:gate`, benchmark JSON contract)
 4. Did the change reduce real user-visible cost, or only move work between adjacent buckets?
