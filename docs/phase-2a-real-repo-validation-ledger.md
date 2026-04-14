@@ -4,8 +4,8 @@ Updated: 2026-04-13 (Asia/Seoul)
 Repos under validation:
 - `/Users/veluga/Documents/Workspace_Minseol/ai-job-finder`
 - `/Users/veluga/Documents/Workspace_Minseol/hyperflow`
-Validation harness repo: `/Users/veluga/Documents/Workspace_Minseol/fxxks`
-Current `fxxks` commit at capture time: `4fc8140`
+Validation harness repo: `/Users/veluga/Documents/Workspace_Minseol/fooks` (historical captures may still refer to the legacy `fxxks` alias)
+Current `fooks` commit at capture time: `4fc8140`
 
 ## Sign-off rule
 - Base success: edit quality + reviewer confirmation
@@ -101,7 +101,7 @@ Current `fxxks` commit at capture time: `4fc8140`
   - `test`: `not-tested` (no task-specific fast test selected)
 - Reviewer outcome: success
 - Current evidence:
-  - `fxxks scan` indexed both `apps/site/src/compare/CompareNodeChrome.tsx` and qualifying linked-ts `apps/site/src/compare/types.ts`
+  - `fooks scan` indexed both `apps/site/src/compare/CompareNodeChrome.tsx` and qualifying linked-ts `apps/site/src/compare/types.ts`
   - edit stayed local to `CompareNodeChrome.tsx` while using `Record<CompareNodeData["kind"], string>` for type-safe label coverage
   - payload bytes: `2268 -> 1687` (~25.6% reduction)
   - resulting diff only replaces the raw union token with a bounded label map
@@ -144,7 +144,7 @@ Current `fxxks` commit at capture time: `4fc8140`
   - qualifying linked `.ts` candidates remain sparse in the active app repos
 - Additional probe:
   - `/Users/veluga/Documents/Workspace_Minseol/hyperflow/packages/react/src/react.tsx` imports same-folder `./starter`
-  - current `fxxks scan` does **not** index `starter.ts` as linked context because it is outside the current bounded allowlist
+  - current `fooks scan` does **not** index `starter.ts` as linked context because it is outside the current bounded allowlist
 - Interpretation:
   - the bounded linked `.ts` policy remains conservative in practice
   - we now have one successful allowlist-compliant linked-context task (`CompareNodeChrome.tsx` + `types.ts`)

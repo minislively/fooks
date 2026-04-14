@@ -2,7 +2,7 @@
 
 ## Decision
 
-`fxxks` does **not** implement rename-aware or migration-aware behavior in PHASE 1.
+`fooks` does **not** implement rename-aware or migration-aware behavior in PHASE 1.
 
 This capability remains a **future extension**, not part of the current
 core promise:

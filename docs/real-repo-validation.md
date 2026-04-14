@@ -5,7 +5,7 @@ claiming real-world value.
 
 This is the fastest way to answer:
 
-- does `fxxks` still classify files reasonably?
+- does `fooks` still classify files reasonably?
 - does `--model-payload` stay semantically useful?
 - does it materially reduce delivery size on a real frontend repo?
 
