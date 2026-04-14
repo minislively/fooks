@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { ensureFeLensDirs, configPath } from "../core/paths";
+import { ensureFeLensDirs, configPath, canonicalProjectDataDir, legacyProjectDataDir } from "../core/paths";
 import { scanProject } from "../core/scan";
 import { discoverProjectFiles } from "../core/discover";
 import { extractFile } from "../core/extract";
@@ -149,6 +149,31 @@ function warnDeprecatedAlias(cliName: string, command: string | undefined): void
   console.error("Warning: 'fxxks' is deprecated; use 'fooks' instead.");
 }
 
+function warnLegacyCompatibilityUsage(command: string | undefined, cwd = process.cwd()): void {
+  if (command === "codex-runtime-hook") {
+    return;
+  }
+
+  const legacyEnvPairs: Array<[string, string]> = [
+    ["FE_LENS_TARGET_ACCOUNT", "FOOKS_TARGET_ACCOUNT"],
+    ["FE_LENS_ACTIVE_ACCOUNT", "FOOKS_ACTIVE_ACCOUNT"],
+    ["FE_LENS_CODEX_HOME", "FOOKS_CODEX_HOME"],
+    ["FE_LENS_CLAUDE_HOME", "FOOKS_CLAUDE_HOME"],
+  ];
+
+  for (const [legacyName, canonicalName] of legacyEnvPairs) {
+    if (process.env[legacyName]?.trim() && !process.env[canonicalName]?.trim()) {
+      console.error(`Warning: '${legacyName}' is deprecated; prefer '${canonicalName}'.`);
+    }
+  }
+
+  const legacyDir = legacyProjectDataDir(cwd);
+  const canonicalDir = canonicalProjectDataDir(cwd);
+  if (fs.existsSync(legacyDir) && !fs.existsSync(canonicalDir)) {
+    console.error("Warning: Legacy '.fe-lens' project state detected; prefer '.fooks'.");
+  }
+}
+
 async function run(): Promise<void> {
   const [command, ...rest] = process.argv.slice(2);
   const [arg1] = rest;
@@ -156,6 +181,7 @@ async function run(): Promise<void> {
   const cliName = isRecognizedCliName(invokedName) ? invokedName : "fooks";
   const displayCliName = preferredCliName(cliName);
   warnDeprecatedAlias(cliName, command);
+  warnLegacyCompatibilityUsage(command, process.cwd());
 
   switch (command) {
     case "init": {

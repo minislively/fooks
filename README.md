@@ -263,3 +263,4 @@ Legacy compatibility:
 - `#fxxks-full-read` and `#fxxks-disable-pre-read` still work as deprecated escape hatches
 - canonical internal paths now use `.fooks/` and runtime-home `fooks/attachments`
 - legacy `.fe-lens/` paths and `FE_LENS_*` env names remain compatibility fallbacks during migration
+- direct CLI usage now emits stderr warnings when it falls back to legacy `FE_LENS_*` env names or `.fe-lens/`-only project state

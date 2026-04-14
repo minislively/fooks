@@ -48,6 +48,14 @@ function runViaScript(scriptPath, args, cwd = repoRoot, envOverrides = {}) {
   });
 }
 
+function runCliDetailed(args, cwd = repoRoot, envOverrides = {}) {
+  return spawnSync(process.execPath, [cli, ...args], {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, ...envOverrides },
+  });
+}
+
 function createCliAlias(aliasName) {
   const aliasPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), `fooks-alias-${aliasName}-`)), aliasName);
   fs.writeFileSync(
@@ -289,6 +297,22 @@ test("deprecated fxxks alias warns and advertises fooks usage", () => {
   assert.equal(result.status, 1);
   assert.match(result.stderr, /'fxxks' is deprecated; use 'fooks'/);
   assert.match(result.stderr, /Usage: fooks <init\|scan\|extract\|decide\|attach\|install\|status\|codex-pre-read\|codex-runtime-hook>/);
+});
+
+test("legacy FE_LENS env usage warns on user-facing CLI flows", () => {
+  const tempDir = makeTempProject();
+  const result = runCliDetailed(["init"], tempDir, { FE_LENS_TARGET_ACCOUNT: "minislively" });
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /'FE_LENS_TARGET_ACCOUNT' is deprecated; prefer 'FOOKS_TARGET_ACCOUNT'/);
+});
+
+test("legacy .fe-lens-only project state warns on user-facing CLI flows", () => {
+  const tempDir = makeTempProject();
+  fs.mkdirSync(path.join(tempDir, ".fe-lens"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, ".fe-lens", "config.json"), JSON.stringify({ targetAccount: "minislively" }, null, 2));
+  const result = runCliDetailed(["scan"], tempDir);
+  assert.equal(result.status, 0);
+  assert.match(result.stderr, /Legacy '\.fe-lens' project state detected; prefer '\.fooks'/);
 });
 
 test("runtime prompt parser finds eligible tsx/jsx paths and escape hatches", () => {
