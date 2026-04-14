@@ -693,6 +693,9 @@ test("scan indexes component and qualifying linked ts but excludes generic utils
   assert.ok(Array.isArray(formSectionEntry.decideReason));
   assert.ok(["low", "medium", "high"].includes(formSectionEntry.decideConfidence));
 
+  const persistedIndex = JSON.parse(fs.readFileSync(path.join(tempDir, ".fooks", "index.json"), "utf8"));
+  assert.equal(persistedIndex.observability, undefined);
+
   const secondRun = run(["scan"], tempDir);
   assert.ok(secondRun.reusedCacheEntries >= 5);
   assert.equal(secondRun.observability.counters.fileReadCount, 0);

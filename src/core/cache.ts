@@ -17,7 +17,11 @@ export function writeCachedExtraction(result: ExtractionResult, cwd = process.cw
 
 export function writeScanIndex(result: ScanResult, cwd = process.cwd()): void {
   ensureProjectDataDirs(cwd);
-  fs.writeFileSync(indexPath(cwd), JSON.stringify(result, null, 2));
+  const persistedResult: ScanResult = {
+    ...result,
+    observability: undefined,
+  };
+  fs.writeFileSync(indexPath(cwd), JSON.stringify(persistedResult, null, 2));
 }
 
 export function readScanIndex(cwd = process.cwd()): ScanResult | null {
