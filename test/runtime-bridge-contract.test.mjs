@@ -75,7 +75,7 @@ test("runtime bridge contract keeps repeated-read inject and fallback semantics 
     {
       hookEventName: "UserPromptSubmit",
       sessionId: overrideSession,
-      prompt: "Need exact source fixtures/compressed/FormSection.tsx #fxxks-full-read",
+      prompt: "Need exact source fixtures/compressed/FormSection.tsx #fooks-full-read",
     },
     repoRoot,
   );

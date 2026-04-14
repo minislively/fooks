@@ -38,7 +38,7 @@ export function defaultCodexHookCommand(cliName = "fooks"): string {
 }
 
 function compatibleCodexHookCommands(cliName = "fooks"): string[] {
-  return [...new Set([defaultCodexHookCommand(cliName), defaultCodexHookCommand("fooks"), defaultCodexHookCommand("fxxks"), defaultCodexHookCommand("fe-lens")])];
+  return [...new Set([defaultCodexHookCommand(cliName), defaultCodexHookCommand("fooks"), defaultCodexHookCommand("fe-lens")])];
 }
 
 function isLegacyNodeBridgeCommand(commandText: string): boolean {

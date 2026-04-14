@@ -4,7 +4,7 @@ Updated: 2026-04-13 (Asia/Seoul)
 Repos under validation:
 - `/Users/veluga/Documents/Workspace_Minseol/ai-job-finder`
 - `/Users/veluga/Documents/Workspace_Minseol/hyperflow`
-Validation harness repo: `/Users/veluga/Documents/Workspace_Minseol/fooks` (historical captures may still refer to the legacy `fxxks` alias)
+Validation harness repo: `/Users/veluga/Documents/Workspace_Minseol/fooks` (historical captures may still refer to pre-rename paths or legacy compatibility names)
 Current `fooks` commit at capture time: `4fc8140`
 
 ## Sign-off rule
@@ -36,7 +36,7 @@ Current `fooks` commit at capture time: `4fc8140`
   - `long-file`
 - Confidence: `high`
 - Linked context used: none (same-file only)
-- Fallback: not required for the edit path; `#fxxks-full-read` escape hatch still verified separately
+- Fallback: not required for the edit path; canonical `#fooks-full-read` escape hatch verified separately
 - Build/test status:
   - `build`: passed (`next build`)
   - `lint`: passed with pre-existing warnings only (`Separator`, `cn`, `jobId`, unrelated warnings in other files)
@@ -48,7 +48,7 @@ Current `fooks` commit at capture time: `4fc8140`
   - repeated Codex guidance stayed coherent across 3 turns
   - edit applied in the expected JSX blocks without adding unnecessary state
   - resulting diff only adds two count labels below the existing `Input`/`Textarea`
-  - `#fxxks-full-read` escape hatch worked when requested
+  - `#fooks-full-read` escape hatch worked when requested
 - Failure summary: none observed for this task
 - Status: **successful Phase 2A validation task**
 

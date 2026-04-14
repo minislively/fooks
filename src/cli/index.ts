@@ -136,19 +136,9 @@ async function readStdinJson(): Promise<Record<string, unknown>> {
 }
 
 function isRecognizedCliName(name: string): boolean {
-  return new Set(["fooks", "fxxks", "fe-lens"]).has(name);
+  return new Set(["fooks", "fe-lens"]).has(name);
 }
 
-function preferredCliName(cliName: string): string {
-  return cliName === "fxxks" ? "fooks" : cliName;
-}
-
-function warnDeprecatedAlias(cliName: string, command: string | undefined): void {
-  if (cliName !== "fxxks" || command === "codex-runtime-hook") {
-    return;
-  }
-  console.error("Warning: 'fxxks' is deprecated; use 'fooks' instead.");
-}
 
 function warnLegacyCompatibilityUsage(command: string | undefined, cwd = process.cwd()): void {
   if (command === "codex-runtime-hook") {
@@ -180,8 +170,7 @@ async function run(): Promise<void> {
   const [arg1] = rest;
   const invokedName = path.basename(process.argv[1] ?? "fooks");
   const cliName = isRecognizedCliName(invokedName) ? invokedName : "fooks";
-  const displayCliName = preferredCliName(cliName);
-  warnDeprecatedAlias(cliName, command);
+  const displayCliName = cliName;
   warnLegacyCompatibilityUsage(command, process.cwd());
 
   switch (command) {

@@ -1,7 +1,7 @@
 # fooks
 
 Product / package / primary CLI name: `fooks`
-Compatibility aliases: deprecated `fxxks`, legacy `fe-lens`
+Compatibility alias: legacy `fe-lens`
 
 Local frontend-only context compression engine for React/TSX files.
 
@@ -38,7 +38,7 @@ fooks attach codex
 fooks attach claude
 ```
 
-Early Phase 1 drafts may still refer to `fe-lens`. The shipping product name is `fooks`; `fxxks` is now a deprecated compatibility CLI alias, while `fe-lens` remains for older internal path/env contracts.
+Early Phase 1 drafts may still refer to `fe-lens`. The shipping product name is `fooks`; `fe-lens` remains only for older internal path/env contracts during migration.
 
 ## Account context
 
@@ -259,9 +259,7 @@ See `docs/real-repo-validation.md`.
 
 Legacy compatibility:
 
-- `fxxks` still works as a deprecated CLI alias; prefer `fooks`
 - `fe-lens` still works as a legacy CLI alias for older internal contracts
-- `#fxxks-full-read` and `#fxxks-disable-pre-read` still work as deprecated escape hatches
 - canonical internal paths now use `.fooks/` and runtime-home `fooks/attachments`
 - legacy `.fe-lens/` paths and `FE_LENS_*` env names remain compatibility fallbacks during migration
 - direct CLI usage now emits stderr warnings when it falls back to legacy `FE_LENS_*` env names or `.fe-lens/`-only project state

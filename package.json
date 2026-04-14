@@ -5,7 +5,6 @@
   "type": "commonjs",
   "bin": {
     "fooks": "dist/cli/index.js",
-    "fxxks": "dist/cli/index.js",
     "fe-lens": "dist/cli/index.js"
   },
   "scripts": {
