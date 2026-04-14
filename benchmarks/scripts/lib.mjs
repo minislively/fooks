@@ -123,15 +123,18 @@ export function summariseNumbers(values) {
 export function aggregateScenario(samples) {
   const durations = samples.map((sample) => sample.durationMs);
   const counts = samples[0];
+  const summary = summariseNumbers(durations);
   const observability = aggregateObservability(samples.map((sample) => sample.observability).filter(Boolean));
+  const runtimeBreakdown = deriveRuntimeBreakdown(summary.avgMs, observability);
   return {
-    ...summariseNumbers(durations),
+    ...summary,
     fileCount: counts.fileCount,
     changedFileCount: counts.changedFileCount,
     cacheHitCount: counts.cacheHitCount,
     cacheMissCount: counts.cacheMissCount,
     invalidatedFileCount: counts.invalidatedFileCount,
     observability,
+    runtimeBreakdown,
   };
 }
 
@@ -153,6 +156,18 @@ function aggregateObservability(samples) {
     counters: aggregateNumericObjects(samples.map((sample) => sample.counters), {}),
     discovery: aggregateNumericObjects(samples.map((sample) => sample.discovery), {}),
     slowFiles: samples.find((sample) => Array.isArray(sample.slowFiles) && sample.slowFiles.length)?.slowFiles ?? [],
+  };
+}
+
+function deriveRuntimeBreakdown(cliWallMs, observability) {
+  const scanCoreMs = round(observability?.timingsMs?.total ?? 0);
+  const outsideScanMs = round(Math.max(0, cliWallMs - scanCoreMs));
+  return {
+    cliWallMs: round(cliWallMs),
+    scanCoreMs,
+    outsideScanMs,
+    scanCoreRatio: cliWallMs > 0 ? round(scanCoreMs / cliWallMs, 4) : 0,
+    outsideScanRatio: cliWallMs > 0 ? round(outsideScanMs / cliWallMs, 4) : 0,
   };
 }
 
@@ -500,6 +515,7 @@ export function scanCacheSummary(report, latestPath) {
     `- partial(single) avg: ${report.runs.partialSingle.avgMs}ms (${report.ratios.partialSingleVsCold}x of cold)`,
     `- partial(multi) avg: ${report.runs.partialMulti.avgMs}ms (${report.ratios.partialMultiVsCold}x of cold)`,
     `- rescan after invalidation avg: ${report.runs.rescanAfterInvalidation.avgMs}ms`,
+    `- warm runtime split: cli ${report.runs.warm.runtimeBreakdown.cliWallMs}ms / scan ${report.runs.warm.runtimeBreakdown.scanCoreMs}ms / outside-scan ${report.runs.warm.runtimeBreakdown.outsideScanMs}ms`,
   ];
 }
 

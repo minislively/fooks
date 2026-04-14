@@ -70,6 +70,8 @@ test("scan-cache benchmark script emits expanded scenarios and writes the latest
   assert.ok(result.runs.cold.observability.timingsMs.discovery >= 0);
   assert.ok(result.runs.warm.observability.counters.metadataReuseCount > 0);
   assert.ok(Array.isArray(result.runs.partialSingle.observability.slowFiles));
+  assert.ok(result.runs.warm.runtimeBreakdown.scanCoreMs >= 0);
+  assert.ok(result.runs.warm.runtimeBreakdown.outsideScanMs >= 0);
   assert.ok(fs.existsSync(result.artifacts.latestPath));
 });
 

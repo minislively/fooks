@@ -1,4 +1,4 @@
-# Phase 2 Optimization Candidates — Post-Observability Re-rank
+# Phase 2 Optimization Candidates — Post-Runtime-Split Re-rank
 
 This note updates the optimization backlog after the first scan/discovery/cache-path pass added benchmark-visible observability and conservative unchanged-file short-circuiting.
 
@@ -9,11 +9,15 @@ This note updates the optimization backlog after the first scan/discovery/cache-
 
 ## Latest snapshot
 
-- cold avg: `325.65ms`
-- warm avg: `235.75ms`
-- partial single avg: `255.96ms`
-- partial multi avg: `254.47ms`
-- rescan after invalidation avg: `324.04ms`
+- cold avg: `316.42ms`
+- warm avg: `230.4ms`
+- partial single avg: `252.28ms`
+- partial multi avg: `247.83ms`
+- rescan after invalidation avg: `312.9ms`
+- warm runtime split:
+  - CLI wall time: `230.4ms`
+  - internal scan total: `8ms`
+  - outside-scan overhead: `222.4ms`
 - extract reduction:
   - `SimpleButton` → `raw` (no reduction target)
   - `FormSection` → `34.59%`
@@ -27,6 +31,7 @@ The benchmark artifact now carries scan observability that did not exist in phas
 - reuse counters (`metadataReuseCount`, `fileReadCount`, `reparsedFileCount`, extraction cache hits/misses)
 - discovery counters (`directoriesVisited`, `filesVisited`, `componentFileCount`, `linkedTsCount`, import probe/cache-hit counts)
 - per-scenario slow-file summaries
+- per-scenario runtime breakdowns (`cliWallMs`, `scanCoreMs`, `outsideScanMs`, ratios)
 
 The runtime behavior also changed conservatively:
 
@@ -38,22 +43,25 @@ The runtime behavior also changed conservatively:
 
 ### 1. The internal scan path is now much cheaper on warm/partial runs than the end-to-end CLI wall time suggests
 
-The top-line benchmark numbers still show warm/partial runs in the `236–256ms` range, but the new internal observability shows that the actual scan work is far smaller:
+The top-line benchmark numbers still show warm/partial runs in the `230–252ms` range, but the new runtime split makes the gap explicit:
 
-- warm internal total: about `8.36ms`
+- warm internal total: about `8ms`
+  - `outsideScanMs: 222.4ms`
   - `fileReadCount: 0`
   - `metadataReuseCount: 81`
   - `reparsedFileCount: 0`
-- partial single internal total: about `23.82ms`
+- partial single internal total: about `23.95ms`
+  - `outsideScanMs: 228.33ms`
   - `fileReadCount: 1`
   - `metadataReuseCount: 80`
   - `reparsedFileCount: 1`
-- partial multi internal total: about `21.74ms`
+- partial multi internal total: about `20.37ms`
+  - `outsideScanMs: 227.46ms`
   - `fileReadCount: 2`
   - `metadataReuseCount: 79`
   - `reparsedFileCount: 2`
 
-**Implication:** the remaining gap in CLI-visible benchmark time is no longer primarily “unchanged files are being reread and reparsed.” That part of the path is now mostly under control.
+**Implication:** the remaining gap in CLI-visible benchmark time is no longer primarily “unchanged files are being reread and reparsed.” That part of the path is now mostly under control, and the next measurement target is clearly the work happening outside the internal scan core.
 
 ### 2. Cold/rescan cost is still dominated by extract + cache-write, not decide
 
@@ -73,9 +81,9 @@ Discovery is still a real cost center and now measurable, but the new counters s
 
 ## Re-ranked priority order
 
-### P0 — End-to-end benchmark/runtime overhead outside unchanged-file rereads
+### P0 — End-to-end benchmark/runtime overhead outside the internal scan core
 
-Now that warm/partial scans avoid rereading unchanged files, the next high-value question is:
+Now that warm/partial scans avoid rereading unchanged files and the runtime split proves the warm path is dominated by non-scan time, the next high-value question is:
 
 > why does CLI-visible wall time remain materially larger than the internal scan total?
 
@@ -133,8 +141,8 @@ Do **not** lead with these unless new benchmark evidence changes the ranking:
 
 ## Suggested next experiments
 
-1. Split benchmark reporting between internal scan total and full CLI wall time in the summary layer.
-2. Capture serialization/write timings for benchmark artifact generation separately from core scan timings.
+1. Capture serialization/write timings for benchmark artifact generation separately from core scan timings.
+2. Measure CLI bootstrap / command-dispatch overhead independently from benchmark artifact persistence.
 3. Run the benchmark corpus with larger `FOOKS_BENCH_COPY_COUNT` values to see whether discovery or extract scales worse.
 4. Add one or two borderline fixtures before any extract/fast-path redesign.
 

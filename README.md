@@ -264,7 +264,7 @@ The canonical benchmark envelope includes:
 
 - benchmark version / run id / git SHA / node version / platform
 - scan/cache suite output
-- scan observability for timing splits, skip/hit/miss counters, and slow files
+- scan observability for timing splits, skip/hit/miss counters, slow files, and CLI-vs-scan runtime breakdowns
 - extract suite output
 - repeated-run stability output
 - preservation + mode-decision results
