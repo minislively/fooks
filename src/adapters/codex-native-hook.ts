@@ -36,7 +36,10 @@ function readPrompt(payload: NativePayload): string {
 function findAttachedProjectRoot(startCwd: string): string | null {
   let current = path.resolve(startCwd);
   while (true) {
-    if (fs.existsSync(path.join(current, ".fe-lens", "adapters", "codex", "adapter.json"))) {
+    if (
+      fs.existsSync(path.join(current, ".fooks", "adapters", "codex", "adapter.json")) ||
+      fs.existsSync(path.join(current, ".fe-lens", "adapters", "codex", "adapter.json"))
+    ) {
       return current;
     }
     const parent = path.dirname(current);

@@ -14,8 +14,8 @@ fooks install codex-hooks
 ```
 
 확인 포인트:
-- `.fe-lens/` 가 생성되는가
-- `~/.codex/fe-lens/attachments/<repo>.json` 이 생성되는가
+- `.fooks/` 가 생성되는가
+- `~/.codex/fooks/attachments/<repo>.json` 이 생성되는가
 - `~/.codex/hooks.json` 에 `fooks codex-runtime-hook --native-hook` 가 들어가는가
 
 ## 2. 첫 세션 smoke

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { adapterDir, ensureFeLensDirs } from "../core/paths";
+import { adapterDir, canonicalProjectDataDir, ensureFeLensDirs, legacyProjectDataDir } from "../core/paths";
 import type { AttachResult, CodexTrustStatus, ExtractionResult } from "../core/schema";
 
 type AccountDetection = {
@@ -18,8 +18,10 @@ function extractGithubOwner(value: string | undefined): string | null {
 }
 
 function configAccount(cwd: string): string | null {
-  const configFile = path.join(cwd, ".fe-lens", "config.json");
-  if (!fs.existsSync(configFile)) return null;
+  const configFile = [path.join(canonicalProjectDataDir(cwd), "config.json"), path.join(legacyProjectDataDir(cwd), "config.json")].find((candidate) =>
+    fs.existsSync(candidate),
+  );
+  if (!configFile) return null;
   const config = JSON.parse(fs.readFileSync(configFile, "utf8")) as { targetAccount?: string };
   return config.targetAccount ?? null;
 }
@@ -46,7 +48,7 @@ function packageRepositoryAccount(cwd: string): string | null {
 }
 
 export function detectAccountContext(cwd = process.cwd()): AccountDetection {
-  const envAccount = process.env.FE_LENS_ACTIVE_ACCOUNT?.trim();
+  const envAccount = process.env.FOOKS_ACTIVE_ACCOUNT?.trim() || process.env.FE_LENS_ACTIVE_ACCOUNT?.trim();
   if (envAccount) {
     return { account: envAccount, source: "env" };
   }
@@ -97,7 +99,10 @@ export function writeAdapterFiles(runtime: "codex" | "claude", cwd = process.cwd
 }
 
 function runtimeHome(runtime: "codex" | "claude"): string {
-  const override = runtime === "codex" ? process.env.FE_LENS_CODEX_HOME : process.env.FE_LENS_CLAUDE_HOME;
+  const override =
+    runtime === "codex"
+      ? process.env.FOOKS_CODEX_HOME || process.env.FE_LENS_CODEX_HOME
+      : process.env.FOOKS_CLAUDE_HOME || process.env.FE_LENS_CLAUDE_HOME;
   if (override) {
     return override;
   }
@@ -111,7 +116,7 @@ export function installRuntimeManifest(runtime: "codex" | "claude", cwd = proces
   }
 
   const projectName = path.basename(cwd).replace(/[^a-z0-9._-]+/gi, "-").toLowerCase();
-  const manifestPath = path.join(home, "fe-lens", "attachments", `${projectName}.json`);
+  const manifestPath = path.join(home, "fooks", "attachments", `${projectName}.json`);
   fs.mkdirSync(path.dirname(manifestPath), { recursive: true });
   fs.writeFileSync(
     manifestPath,

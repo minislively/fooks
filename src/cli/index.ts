@@ -168,14 +168,14 @@ async function run(): Promise<void> {
             {
               version: 1,
               createdAt: new Date().toISOString(),
-              targetAccount: process.env.FE_LENS_TARGET_ACCOUNT ?? "minislively",
+              targetAccount: process.env.FOOKS_TARGET_ACCOUNT ?? process.env.FE_LENS_TARGET_ACCOUNT ?? "minislively",
             },
             null,
             2,
           ),
         );
       }
-      print({ config, cacheDir: path.join(process.cwd(), ".fe-lens", "cache") });
+      print({ config, cacheDir: path.join(process.cwd(), ".fooks", "cache") });
       return;
     }
     case "scan": {

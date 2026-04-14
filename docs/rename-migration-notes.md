@@ -60,7 +60,9 @@ So the feature is a good future direction, but not a PHASE 1 requirement.
 
 Until a dedicated migration feature is scheduled:
 
-- keep `.fe-lens` internal compatibility paths stable
-- keep `FE_LENS_*` compatibility env names stable
+- keep `.fooks` as the canonical internal path
+- keep `FOOKS_*` as the canonical env prefix
+- keep `.fe-lens` internal compatibility paths readable during migration
+- keep `FE_LENS_*` compatibility env names readable during migration
 - keep `fe-lens` CLI alias for compatibility
 - avoid broad rename/path migrations just for cosmetic naming cleanup

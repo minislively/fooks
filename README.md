@@ -43,8 +43,8 @@ Early Phase 1 drafts may still refer to `fe-lens`. The shipping product name is 
 
 Attach commands resolve account context in this order:
 
-1. `FE_LENS_ACTIVE_ACCOUNT`
-2. `.fe-lens/config.json` `targetAccount`
+1. `FOOKS_ACTIVE_ACCOUNT` (fallback: `FE_LENS_ACTIVE_ACCOUNT`)
+2. `.fooks/config.json` `targetAccount` (fallback: `.fe-lens/config.json`)
 3. `git remote get-url origin`
 4. `package.json.repository`
 
@@ -59,10 +59,10 @@ Attach uses two proof layers:
 
 Environment overrides for deterministic verification:
 
-- `FE_LENS_CODEX_HOME`
-- `FE_LENS_CLAUDE_HOME`
-- `FE_LENS_TARGET_ACCOUNT`
-- `FE_LENS_ACTIVE_ACCOUNT`
+- `FOOKS_CODEX_HOME` (fallback: `FE_LENS_CODEX_HOME`)
+- `FOOKS_CLAUDE_HOME` (fallback: `FE_LENS_CLAUDE_HOME`)
+- `FOOKS_TARGET_ACCOUNT` (fallback: `FE_LENS_TARGET_ACCOUNT`)
+- `FOOKS_ACTIVE_ACCOUNT` (fallback: `FE_LENS_ACTIVE_ACCOUNT`)
 
 If a runtime home is missing, attach returns an explicit blocker instead of a false success.
 
@@ -261,4 +261,5 @@ Legacy compatibility:
 - `fxxks` still works as a deprecated CLI alias; prefer `fooks`
 - `fe-lens` still works as a legacy CLI alias for older internal contracts
 - `#fxxks-full-read` and `#fxxks-disable-pre-read` still work as deprecated escape hatches
-- internal `.fe-lens/` paths remain unchanged for cache and manifest continuity
+- canonical internal paths now use `.fooks/` and runtime-home `fooks/attachments`
+- legacy `.fe-lens/` paths and `FE_LENS_*` env names remain compatibility fallbacks during migration

@@ -126,10 +126,18 @@ function appendMarker(filePath, marker) {
 test("init creates config and cache contract", () => {
   const tempDir = makeTempProject();
   const result = run(["init"], tempDir);
-  assert.ok(result.config.endsWith(path.join(".fe-lens", "config.json")));
-  assert.ok(result.cacheDir.endsWith(path.join(".fe-lens", "cache")));
-  assert.ok(fs.existsSync(path.join(tempDir, ".fe-lens", "config.json")));
-  const config = JSON.parse(fs.readFileSync(path.join(tempDir, ".fe-lens", "config.json"), "utf8"));
+  assert.ok(result.config.endsWith(path.join(".fooks", "config.json")));
+  assert.ok(result.cacheDir.endsWith(path.join(".fooks", "cache")));
+  assert.ok(fs.existsSync(path.join(tempDir, ".fooks", "config.json")));
+  const config = JSON.parse(fs.readFileSync(path.join(tempDir, ".fooks", "config.json"), "utf8"));
+  assert.equal(config.targetAccount, "minislively");
+});
+
+test("init prefers FOOKS_TARGET_ACCOUNT for canonical config writes", () => {
+  const tempDir = makeTempProject("https://github.com/example-org/temp-project.git");
+  const result = run(["init"], tempDir, { FOOKS_TARGET_ACCOUNT: "minislively" });
+  assert.ok(result.config.endsWith(path.join(".fooks", "config.json")));
+  const config = JSON.parse(fs.readFileSync(path.join(tempDir, ".fooks", "config.json"), "utf8"));
   assert.equal(config.targetAccount, "minislively");
 });
 
@@ -613,6 +621,24 @@ test("native hook bridge only activates inside attached codex projects", () => {
   );
 });
 
+test("native hook bridge still detects legacy fe-lens adapter roots", () => {
+  const legacyDir = makeTempProject();
+  const adapterDir = path.join(legacyDir, ".fe-lens", "adapters", "codex");
+  fs.mkdirSync(adapterDir, { recursive: true });
+  fs.writeFileSync(path.join(adapterDir, "adapter.json"), JSON.stringify({ runtime: "codex" }, null, 2));
+
+  const output = handleCodexNativeHookPayload(
+    {
+      hook_event_name: "UserPromptSubmit",
+      cwd: legacyDir,
+      prompt: "Please update src/components/FormSection.tsx",
+      session_id: `native-legacy-${Date.now()}`,
+    },
+    legacyDir,
+  );
+  assert.equal(output, null);
+});
+
 test("native hook bridge emits full-read guidance for repeated fallback cases", () => {
   const attachedDir = makeTempProject();
   run(["attach", "codex"], attachedDir, { FE_LENS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-")) });
@@ -706,7 +732,7 @@ test("scan indexes component and qualifying linked ts but excludes generic utils
   assert.ok(filePaths.includes(path.join("src", "components", "Button.types.ts")));
   assert.ok(filePaths.includes(path.join("src", "components", "FormSection.utils.ts")));
   assert.ok(!filePaths.includes(path.join("src", "date-utils.ts")));
-  assert.ok(fs.existsSync(path.join(tempDir, ".fe-lens", "index.json")));
+  assert.ok(fs.existsSync(path.join(tempDir, ".fooks", "index.json")));
   assert.ok(result.refreshedEntries >= 5);
   const formSectionEntry = result.files.find((item) => item.filePath === path.join("src", "components", "FormSection.tsx"));
   assert.ok(formSectionEntry);
@@ -862,8 +888,8 @@ test("install codex-hooks rewrites legacy bridge commands to the canonical fooks
 
 test("attach codex proves contract and runtime under minislively account context", () => {
   const tempDir = makeTempProject();
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
-  const result = run(["attach", "codex"], tempDir, { FE_LENS_CODEX_HOME: codexHome });
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  const result = run(["attach", "codex"], tempDir, { FOOKS_CODEX_HOME: codexHome });
   assert.equal(result.runtime, "codex");
   assert.equal(result.contractProof.passed, true);
   assert.equal(result.runtimeProof.status, "passed");
@@ -913,33 +939,46 @@ test("attach claude can report blocker without failing contract proof", () => {
 
 test("attach can use explicit active account override instead of repository metadata", () => {
   const tempDir = makeTempProject("https://github.com/example-org/temp-project.git");
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
   const result = run(["attach", "codex"], tempDir, {
-    FE_LENS_ACTIVE_ACCOUNT: "minislively",
-    FE_LENS_CODEX_HOME: codexHome,
+    FOOKS_ACTIVE_ACCOUNT: "minislively",
+    FOOKS_CODEX_HOME: codexHome,
   });
   assert.equal(result.runtimeProof.status, "passed");
   assert.ok(result.runtimeProof.details.includes("account-source=env"));
 });
 
+test("attach still reads legacy fe-lens config account when canonical config is absent", () => {
+  const tempDir = makeTempProject("https://github.com/example-org/temp-project.git");
+  fs.mkdirSync(path.join(tempDir, ".fe-lens"), { recursive: true });
+  fs.writeFileSync(
+    path.join(tempDir, ".fe-lens", "config.json"),
+    JSON.stringify({ targetAccount: "minislively" }, null, 2),
+  );
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  const result = run(["attach", "codex"], tempDir, { FOOKS_CODEX_HOME: codexHome });
+  assert.equal(result.runtimeProof.status, "passed");
+  assert.ok(result.runtimeProof.details.includes("account-source=config"));
+});
+
 test("attach codex blocks non-minislively account without writing runtime manifest", () => {
   const tempDir = makeTempProject("https://github.com/example-org/temp-project.git");
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
-  const result = run(["attach", "codex"], tempDir, { FE_LENS_CODEX_HOME: codexHome });
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  const result = run(["attach", "codex"], tempDir, { FOOKS_CODEX_HOME: codexHome });
   assert.equal(result.runtimeProof.status, "blocked");
   assert.equal(result.runtimeProof.blocker, "minislively account context not detected");
   assert.ok(result.runtimeProof.details.includes("account-source=package-repository"));
   assert.equal(runtimeManifestPath(result), undefined);
-  assert.equal(fs.existsSync(path.join(codexHome, "fe-lens")), false);
+  assert.equal(fs.existsSync(path.join(codexHome, "fooks")), false);
 });
 
 test("attach claude blocks non-minislively account without writing runtime manifest", () => {
   const tempDir = makeTempProject("https://github.com/example-org/temp-project.git");
-  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-claude-home-"));
-  const result = run(["attach", "claude"], tempDir, { FE_LENS_CLAUDE_HOME: claudeHome });
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-claude-home-"));
+  const result = run(["attach", "claude"], tempDir, { FOOKS_CLAUDE_HOME: claudeHome });
   assert.equal(result.runtimeProof.status, "blocked");
   assert.equal(result.runtimeProof.blocker, "minislively account context not detected");
   assert.ok(result.runtimeProof.details.includes("account-source=package-repository"));
   assert.equal(runtimeManifestPath(result), undefined);
-  assert.equal(fs.existsSync(path.join(claudeHome, "fe-lens")), false);
+  assert.equal(fs.existsSync(path.join(claudeHome, "fooks")), false);
 });

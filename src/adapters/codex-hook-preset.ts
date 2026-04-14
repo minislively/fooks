@@ -50,7 +50,7 @@ function isCompatibleCodexHookCommand(commandText: string, cliName = "fooks"): b
 }
 
 function runtimeHome(): string {
-  return process.env.FE_LENS_CODEX_HOME || path.join(os.homedir(), ".codex");
+  return process.env.FOOKS_CODEX_HOME || process.env.FE_LENS_CODEX_HOME || path.join(os.homedir(), ".codex");
 }
 
 function hooksPath(): string {

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { hashText } from "../core/hash";
 import { readScanIndex } from "../core/cache";
-import { runtimeStatusPath } from "../core/paths";
+import { legacyProjectDataDir, runtimeStatusPath } from "../core/paths";
 import { scanProject } from "../core/scan";
 import type { CodexActiveFileContext, CodexTrustStatus } from "../core/schema";
 
@@ -14,9 +14,13 @@ function statusFile(cwd: string): string {
   return runtimeStatusPath("codex", cwd);
 }
 
+function legacyStatusFile(cwd: string): string {
+  return path.join(legacyProjectDataDir(cwd), "adapters", "codex", "status.json");
+}
+
 export function readCodexTrustStatus(cwd = process.cwd()): CodexTrustStatus {
-  const file = statusFile(cwd);
-  if (!fs.existsSync(file)) {
+  const file = [statusFile(cwd), legacyStatusFile(cwd)].find((candidate) => fs.existsSync(candidate));
+  if (!file) {
     return {
       runtime: "codex",
       connectionState: "disconnected",

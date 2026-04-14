@@ -1,31 +1,40 @@
 import path from "node:path";
 import fs from "node:fs";
 
+export const FOOKS_DIR = ".fooks";
 export const FE_LENS_DIR = ".fe-lens";
 
 export function projectRoot(cwd = process.cwd()): string {
   return cwd;
 }
 
+export function canonicalProjectDataDir(cwd = process.cwd()): string {
+  return path.join(cwd, FOOKS_DIR);
+}
+
+export function legacyProjectDataDir(cwd = process.cwd()): string {
+  return path.join(cwd, FE_LENS_DIR);
+}
+
 export function ensureFeLensDirs(cwd = process.cwd()): void {
-  fs.mkdirSync(path.join(cwd, FE_LENS_DIR, "cache"), { recursive: true });
-  fs.mkdirSync(path.join(cwd, FE_LENS_DIR, "adapters"), { recursive: true });
+  fs.mkdirSync(path.join(canonicalProjectDataDir(cwd), "cache"), { recursive: true });
+  fs.mkdirSync(path.join(canonicalProjectDataDir(cwd), "adapters"), { recursive: true });
 }
 
 export function configPath(cwd = process.cwd()): string {
-  return path.join(cwd, FE_LENS_DIR, "config.json");
+  return path.join(canonicalProjectDataDir(cwd), "config.json");
 }
 
 export function indexPath(cwd = process.cwd()): string {
-  return path.join(cwd, FE_LENS_DIR, "index.json");
+  return path.join(canonicalProjectDataDir(cwd), "index.json");
 }
 
 export function cacheFilePath(hash: string, cwd = process.cwd()): string {
-  return path.join(cwd, FE_LENS_DIR, "cache", `${hash}.json`);
+  return path.join(canonicalProjectDataDir(cwd), "cache", `${hash}.json`);
 }
 
 export function adapterDir(runtime: "codex" | "claude", cwd = process.cwd()): string {
-  return path.join(cwd, FE_LENS_DIR, "adapters", runtime);
+  return path.join(canonicalProjectDataDir(cwd), "adapters", runtime);
 }
 
 export function runtimeStatusPath(runtime: "codex" | "claude", cwd = process.cwd()): string {

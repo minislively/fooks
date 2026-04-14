@@ -31,8 +31,8 @@ fooks scan
 
 Check:
 
-- `.fe-lens/index.json` exists
-- `.fe-lens/cache/` exists
+- `.fooks/index.json` exists
+- `.fooks/cache/` exists
 - `files.length` looks plausible for the repo
 
 ## 2. File-class smoke test
