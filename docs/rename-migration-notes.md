@@ -66,3 +66,6 @@ Until a dedicated migration feature is scheduled:
 - keep `FE_LENS_*` compatibility env names readable during migration
 - keep `fe-lens` CLI alias for compatibility
 - avoid broad rename/path migrations just for cosmetic naming cleanup
+
+For the eventual hard-removal sequence and remove-ready gates, see
+[`docs/legacy-removal-checklist.md`](./legacy-removal-checklist.md).

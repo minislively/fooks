@@ -266,3 +266,4 @@ Legacy compatibility:
 - legacy `.fe-lens/` paths and `FE_LENS_*` env names remain compatibility fallbacks during migration
 - direct CLI usage now emits stderr warnings when it falls back to legacy `FE_LENS_*` env names or `.fe-lens/`-only project state
 - `fooks migrate project-state` can move or merge project-local legacy `.fe-lens/` state into canonical `.fooks/`
+- final breaking-removal gates are tracked in [`docs/legacy-removal-checklist.md`](docs/legacy-removal-checklist.md)
