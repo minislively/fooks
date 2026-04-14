@@ -38,7 +38,7 @@ export function defaultCodexHookCommand(cliName = "fooks"): string {
 }
 
 function compatibleCodexHookCommands(cliName = "fooks"): string[] {
-  return [...new Set([defaultCodexHookCommand(cliName), defaultCodexHookCommand("fooks"), defaultCodexHookCommand("fe-lens")])];
+  return [...new Set([defaultCodexHookCommand(cliName), defaultCodexHookCommand("fooks")])];
 }
 
 function isLegacyNodeBridgeCommand(commandText: string): boolean {
@@ -50,7 +50,7 @@ function isCompatibleCodexHookCommand(commandText: string, cliName = "fooks"): b
 }
 
 function runtimeHome(): string {
-  return process.env.FOOKS_CODEX_HOME || process.env.FE_LENS_CODEX_HOME || path.join(os.homedir(), ".codex");
+  return process.env.FOOKS_CODEX_HOME || path.join(os.homedir(), ".codex");
 }
 
 function hooksPath(): string {

@@ -58,14 +58,12 @@ So the feature is a good future direction, but not a PHASE 1 requirement.
 
 ## Current rule
 
-Until a dedicated migration feature is scheduled:
+Current rule:
 
-- keep `.fooks` as the canonical internal path
-- keep `FOOKS_*` as the canonical env prefix
-- keep `.fe-lens` internal compatibility paths readable during migration
-- keep `FE_LENS_*` compatibility env names readable during migration
-- keep `fe-lens` CLI alias for compatibility
-- avoid broad rename/path migrations just for cosmetic naming cleanup
+- `.fooks` is the only supported internal project-state path
+- `FOOKS_*` is the only supported env prefix
+- `fooks` is the only supported CLI/package/runtime name
+- future rename work should treat `fe-lens` references as historical notes only
 
-For the eventual hard-removal sequence and remove-ready gates, see
+For the completed removal record, see
 [`docs/legacy-removal-checklist.md`](./legacy-removal-checklist.md).

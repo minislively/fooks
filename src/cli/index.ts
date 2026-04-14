@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { ensureFeLensDirs, configPath, canonicalProjectDataDir, legacyProjectDataDir } from "../core/paths";
+import { ensureProjectDataDirs, configPath } from "../core/paths";
 import { scanProject } from "../core/scan";
 import { discoverProjectFiles } from "../core/discover";
 import { extractFile } from "../core/extract";
-import { migrateProjectState } from "../core/migrate";
 import { toModelFacingPayload } from "../core/payload/model-facing";
 import { decideMode } from "../core/decide";
 import { attachCodex } from "../adapters/codex";
@@ -136,33 +135,7 @@ async function readStdinJson(): Promise<Record<string, unknown>> {
 }
 
 function isRecognizedCliName(name: string): boolean {
-  return new Set(["fooks", "fe-lens"]).has(name);
-}
-
-
-function warnLegacyCompatibilityUsage(command: string | undefined, cwd = process.cwd()): void {
-  if (command === "codex-runtime-hook") {
-    return;
-  }
-
-  const legacyEnvPairs: Array<[string, string]> = [
-    ["FE_LENS_TARGET_ACCOUNT", "FOOKS_TARGET_ACCOUNT"],
-    ["FE_LENS_ACTIVE_ACCOUNT", "FOOKS_ACTIVE_ACCOUNT"],
-    ["FE_LENS_CODEX_HOME", "FOOKS_CODEX_HOME"],
-    ["FE_LENS_CLAUDE_HOME", "FOOKS_CLAUDE_HOME"],
-  ];
-
-  for (const [legacyName, canonicalName] of legacyEnvPairs) {
-    if (process.env[legacyName]?.trim() && !process.env[canonicalName]?.trim()) {
-      console.error(`Warning: '${legacyName}' is deprecated; prefer '${canonicalName}'.`);
-    }
-  }
-
-  const legacyDir = legacyProjectDataDir(cwd);
-  const canonicalDir = canonicalProjectDataDir(cwd);
-  if (fs.existsSync(legacyDir) && !fs.existsSync(canonicalDir)) {
-    console.error("Warning: Legacy '.fe-lens' project state detected; prefer '.fooks'.");
-  }
+  return name === "fooks";
 }
 
 async function run(): Promise<void> {
@@ -171,11 +144,10 @@ async function run(): Promise<void> {
   const invokedName = path.basename(process.argv[1] ?? "fooks");
   const cliName = isRecognizedCliName(invokedName) ? invokedName : "fooks";
   const displayCliName = cliName;
-  warnLegacyCompatibilityUsage(command, process.cwd());
 
   switch (command) {
     case "init": {
-      ensureFeLensDirs();
+      ensureProjectDataDirs();
       const config = configPath();
       if (!fs.existsSync(config)) {
         fs.writeFileSync(
@@ -184,7 +156,7 @@ async function run(): Promise<void> {
             {
               version: 1,
               createdAt: new Date().toISOString(),
-              targetAccount: process.env.FOOKS_TARGET_ACCOUNT ?? process.env.FE_LENS_TARGET_ACCOUNT ?? "minislively",
+              targetAccount: process.env.FOOKS_TARGET_ACCOUNT ?? "minislively",
             },
             null,
             2,
@@ -195,16 +167,9 @@ async function run(): Promise<void> {
       return;
     }
     case "scan": {
-      ensureFeLensDirs();
+      ensureProjectDataDirs();
       const result = scanProject();
       print(result);
-      return;
-    }
-    case "migrate": {
-      if (arg1 !== "project-state") {
-        throw new Error("migrate expects 'project-state'");
-      }
-      print(migrateProjectState(process.cwd()));
       return;
     }
     case "extract": {
@@ -278,8 +243,7 @@ async function run(): Promise<void> {
     }
     default:
       console.error(`Unknown command: ${command ?? "<none>"}`);
-      console.error(`Usage: ${displayCliName} <init|scan|migrate|extract|decide|attach|install|status|codex-pre-read|codex-runtime-hook>`);
-      console.error(`       ${displayCliName} migrate project-state`);
+      console.error(`Usage: ${displayCliName} <init|scan|extract|decide|attach|install|status|codex-pre-read|codex-runtime-hook>`);
       console.error(`       ${displayCliName} extract <file> [--model-payload] [--json]`);
       console.error(`       ${displayCliName} install codex-hooks`);
       console.error(`       ${displayCliName} codex-pre-read <file> [--json]`);

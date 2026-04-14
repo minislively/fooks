@@ -2,7 +2,6 @@ import path from "node:path";
 import fs from "node:fs";
 
 export const FOOKS_DIR = ".fooks";
-export const FE_LENS_DIR = ".fe-lens";
 
 export function projectRoot(cwd = process.cwd()): string {
   return cwd;
@@ -12,11 +11,7 @@ export function canonicalProjectDataDir(cwd = process.cwd()): string {
   return path.join(cwd, FOOKS_DIR);
 }
 
-export function legacyProjectDataDir(cwd = process.cwd()): string {
-  return path.join(cwd, FE_LENS_DIR);
-}
-
-export function ensureFeLensDirs(cwd = process.cwd()): void {
+export function ensureProjectDataDirs(cwd = process.cwd()): void {
   fs.mkdirSync(path.join(canonicalProjectDataDir(cwd), "cache"), { recursive: true });
   fs.mkdirSync(path.join(canonicalProjectDataDir(cwd), "adapters"), { recursive: true });
 }

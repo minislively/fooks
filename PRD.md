@@ -7,7 +7,7 @@
 **대상 범위:** PHASE 1 MVP  
 **작성 목적:** React/TSX 프론트엔드 파일 읽기 비용 절감을 위한 로컬 컨텍스트 압축 엔진 정의
 
-> 초기 PHASE 1 드래프트에서는 `fe-lens`라는 작업명을 사용했다. 현재 제품/레포/패키지/기본 CLI 이름은 `fooks`이며, `fe-lens`만 마이그레이션 호환성 alias로 유지한다.
+> 초기 PHASE 1 드래프트에서는 `fe-lens`라는 작업명을 사용했다. 현재 제품/레포/패키지/기본 CLI 이름과 지원되는 런타임/스토리지 이름은 모두 `fooks`다.
 
 ---
 
@@ -598,7 +598,7 @@ fooks/
       extract.ts
       decide.ts
       attach.ts
-  .fe-lens/
+  .fooks/
     cache/
     index.json
     config.json

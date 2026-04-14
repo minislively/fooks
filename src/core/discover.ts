@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const IGNORE = new Set([".git", "node_modules", "dist", ".omx", ".fe-lens", ".fooks"]);
+const IGNORE = new Set([".git", "node_modules", "dist", ".omx", ".fooks"]);
 const COMPONENT_EXTS = new Set([".tsx", ".jsx"]);
 
 export type FileTarget = {

@@ -137,4 +137,4 @@ components/QuestionAnswerForm.tsx 원문 기준으로 다시 봐줘.
 
 
 호환성 참고:
-- legacy `fe-lens` 경로/환경변수 fallback은 migration 동안만 유지되므로, 신규 사용은 `fooks` / `.fooks` / `FOOKS_*` 기준으로 맞추세요.
+- 이제 신규 사용뿐 아니라 기존 자동화도 `fooks` / `.fooks` / `FOOKS_*` 기준으로만 맞추세요.

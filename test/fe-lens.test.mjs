@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { createRequire } from "node:module";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const repoRoot = process.cwd();
 const cli = path.join(repoRoot, "dist", "cli", "index.js");
@@ -40,16 +40,8 @@ function runTextWithInput(args, input, cwd = repoRoot, envOverrides = {}) {
   });
 }
 
-function runCliDetailed(args, cwd = repoRoot, envOverrides = {}) {
-  return spawnSync(process.execPath, [cli, ...args], {
-    cwd,
-    encoding: "utf8",
-    env: { ...process.env, ...envOverrides },
-  });
-}
-
 function makeTempProject(repositoryUrl = "https://github.com/minislively/temp-project.git") {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-"));
   fs.mkdirSync(path.join(tempDir, "src", "components"), { recursive: true });
   fs.copyFileSync(path.join(repoRoot, "fixtures", "raw", "SimpleButton.tsx"), path.join(tempDir, "src", "components", "SimpleButton.tsx"));
   fs.copyFileSync(path.join(repoRoot, "fixtures", "raw", "Button.types.ts"), path.join(tempDir, "src", "components", "Button.types.ts"));
@@ -269,65 +261,6 @@ test("cli codex-pre-read reuses the same decision seam and advertises the comman
   assert.match(usage, /codex-pre-read/);
 });
 
-test("legacy FE_LENS env usage warns on user-facing CLI flows", () => {
-  const tempDir = makeTempProject();
-  const result = runCliDetailed(["init"], tempDir, { FE_LENS_TARGET_ACCOUNT: "minislively" });
-  assert.equal(result.status, 0);
-  assert.match(result.stderr, /'FE_LENS_TARGET_ACCOUNT' is deprecated; prefer 'FOOKS_TARGET_ACCOUNT'/);
-});
-
-test("legacy .fe-lens-only project state warns on user-facing CLI flows", () => {
-  const tempDir = makeTempProject();
-  fs.mkdirSync(path.join(tempDir, ".fe-lens"), { recursive: true });
-  fs.writeFileSync(path.join(tempDir, ".fe-lens", "config.json"), JSON.stringify({ targetAccount: "minislively" }, null, 2));
-  const result = runCliDetailed(["scan"], tempDir);
-  assert.equal(result.status, 0);
-  assert.match(result.stderr, /Legacy '\.fe-lens' project state detected; prefer '\.fooks'/);
-});
-
-test("migrate project-state renames legacy .fe-lens into canonical .fooks when no canonical state exists", () => {
-  const tempDir = makeTempProject();
-  fs.mkdirSync(path.join(tempDir, ".fe-lens", "cache"), { recursive: true });
-  fs.writeFileSync(path.join(tempDir, ".fe-lens", "config.json"), JSON.stringify({ targetAccount: "minislively" }, null, 2));
-  fs.writeFileSync(path.join(tempDir, ".fe-lens", "cache", "legacy.json"), JSON.stringify({ ok: true }, null, 2));
-
-  const result = run(["migrate", "project-state"], tempDir);
-  assert.equal(result.action, "renamed-legacy");
-  assert.match(result.legacyDir, /(?:^|\/)\.fe-lens$/);
-  assert.match(result.canonicalDir, /(?:^|\/)\.fooks$/);
-  assert.equal(fs.existsSync(path.join(tempDir, ".fe-lens")), false);
-  assert.ok(fs.existsSync(path.join(tempDir, ".fooks", "config.json")));
-  assert.ok(fs.existsSync(path.join(tempDir, ".fooks", "cache", "legacy.json")));
-});
-
-test("migrate project-state merges missing legacy files without overwriting canonical files", () => {
-  const tempDir = makeTempProject();
-  fs.mkdirSync(path.join(tempDir, ".fe-lens", "cache"), { recursive: true });
-  fs.writeFileSync(path.join(tempDir, ".fe-lens", "config.json"), JSON.stringify({ targetAccount: "legacy" }, null, 2));
-  fs.writeFileSync(path.join(tempDir, ".fe-lens", "cache", "legacy-only.json"), JSON.stringify({ source: "legacy" }, null, 2));
-
-  fs.mkdirSync(path.join(tempDir, ".fooks", "cache"), { recursive: true });
-  fs.writeFileSync(path.join(tempDir, ".fooks", "config.json"), JSON.stringify({ targetAccount: "canonical" }, null, 2));
-
-  const result = run(["migrate", "project-state"], tempDir);
-  assert.equal(result.action, "merged-legacy");
-  assert.ok(result.copiedPaths.includes(path.join(".fooks", "cache", "legacy-only.json")));
-  assert.ok(result.skippedPaths.includes(path.join(".fooks", "config.json")));
-  const canonicalConfig = JSON.parse(fs.readFileSync(path.join(tempDir, ".fooks", "config.json"), "utf8"));
-  assert.equal(canonicalConfig.targetAccount, "canonical");
-  assert.ok(fs.existsSync(path.join(tempDir, ".fe-lens", "config.json")));
-});
-
-test("migrate project-state is idempotent when legacy state is already absent", () => {
-  const tempDir = makeTempProject();
-  fs.mkdirSync(path.join(tempDir, ".fooks"), { recursive: true });
-
-  const result = run(["migrate", "project-state"], tempDir);
-  assert.equal(result.action, "noop");
-  assert.equal(result.reason, "no-legacy-project-state");
-  assert.match(result.canonicalDir, /(?:^|\/)\.fooks$/);
-});
-
 test("runtime prompt parser finds eligible tsx/jsx paths and escape hatches", () => {
   const tsxTarget = extractPromptTarget("Please update components/QuestionAnswerForm.tsx for this flow", path.join(repoRoot, "..", "ai-job-finder"));
   assert.equal(tsxTarget, path.join("components", "QuestionAnswerForm.tsx"));
@@ -421,8 +354,8 @@ test("runtime hook falls back for escape hatch and raw readiness failures", () =
 
 test("runtime hook refreshes stale target state before repeated attach and updates trust status", () => {
   const tempDir = makeTempProject();
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
-  run(["attach", "codex"], tempDir, { FE_LENS_CODEX_HOME: codexHome });
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  run(["attach", "codex"], tempDir, { FOOKS_CODEX_HOME: codexHome });
 
   const sessionId = `hook-refresh-${Date.now()}`;
   handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId }, tempDir);
@@ -460,8 +393,8 @@ test("runtime hook refreshes stale target state before repeated attach and updat
 
 test("stop clears active file from codex trust status after an attach-prepared session", () => {
   const tempDir = makeTempProject();
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
-  run(["attach", "codex"], tempDir, { FE_LENS_CODEX_HOME: codexHome });
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  run(["attach", "codex"], tempDir, { FOOKS_CODEX_HOME: codexHome });
 
   const sessionId = `hook-stop-status-${Date.now()}`;
   handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId }, tempDir);
@@ -626,7 +559,7 @@ test("native hook bridge only activates inside attached codex projects", () => {
   assert.equal(detachedOutput, null);
 
   const attachedDir = makeTempProject();
-  run(["attach", "codex"], attachedDir, { FE_LENS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-")) });
+  run(["attach", "codex"], attachedDir, { FOOKS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-")) });
 
   const sessionId = `native-attached-${Date.now()}`;
   const first = handleCodexNativeHookPayload(
@@ -656,27 +589,9 @@ test("native hook bridge only activates inside attached codex projects", () => {
   );
 });
 
-test("native hook bridge still detects legacy fe-lens adapter roots", () => {
-  const legacyDir = makeTempProject();
-  const adapterDir = path.join(legacyDir, ".fe-lens", "adapters", "codex");
-  fs.mkdirSync(adapterDir, { recursive: true });
-  fs.writeFileSync(path.join(adapterDir, "adapter.json"), JSON.stringify({ runtime: "codex" }, null, 2));
-
-  const output = handleCodexNativeHookPayload(
-    {
-      hook_event_name: "UserPromptSubmit",
-      cwd: legacyDir,
-      prompt: "Please update src/components/FormSection.tsx",
-      session_id: `native-legacy-${Date.now()}`,
-    },
-    legacyDir,
-  );
-  assert.equal(output, null);
-});
-
 test("native hook bridge emits full-read guidance for repeated fallback cases", () => {
   const attachedDir = makeTempProject();
-  run(["attach", "codex"], attachedDir, { FE_LENS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-")) });
+  run(["attach", "codex"], attachedDir, { FOOKS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-")) });
 
   const sessionId = `native-fallback-${Date.now()}`;
   handleCodexNativeHookPayload(
@@ -706,7 +621,7 @@ test("native hook bridge emits full-read guidance for repeated fallback cases", 
 
 test("native hook bridge uses fixed full-read status vocabulary for escape hatch overrides", () => {
   const attachedDir = makeTempProject();
-  run(["attach", "codex"], attachedDir, { FE_LENS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-")) });
+  run(["attach", "codex"], attachedDir, { FOOKS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-")) });
 
   const overridden = handleCodexNativeHookPayload(
     {
@@ -727,7 +642,7 @@ test("native hook bridge uses fixed full-read status vocabulary for escape hatch
 
 test("cli codex-runtime-hook can read native hook payloads from stdin", () => {
   const attachedDir = makeTempProject();
-  run(["attach", "codex"], attachedDir, { FE_LENS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-")) });
+  run(["attach", "codex"], attachedDir, { FOOKS_CODEX_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-")) });
 
   const sessionId = `cli-native-${Date.now()}`;
   runTextWithInput(
@@ -837,11 +752,9 @@ test("model-facing payload trim hits >=15% reduction on at least two compressed/
   }
 });
 
-
-
 test("install codex-hooks creates a reusable hooks preset", () => {
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
-  const result = run(["install", "codex-hooks"], repoRoot, { FE_LENS_CODEX_HOME: codexHome });
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  const result = run(["install", "codex-hooks"], repoRoot, { FOOKS_CODEX_HOME: codexHome });
   assert.equal(result.created, true);
   assert.equal(result.modified, true);
   assert.deepEqual(result.installedEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
@@ -852,7 +765,7 @@ test("install codex-hooks creates a reusable hooks preset", () => {
 });
 
 test("install codex-hooks merges without clobbering existing hooks and stays idempotent", () => {
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
   const hooksPath = path.join(codexHome, "hooks.json");
   fs.writeFileSync(hooksPath, JSON.stringify({
     hooks: {
@@ -862,7 +775,7 @@ test("install codex-hooks merges without clobbering existing hooks and stays ide
     },
   }, null, 2));
 
-  const first = run(["install", "codex-hooks"], repoRoot, { FE_LENS_CODEX_HOME: codexHome });
+  const first = run(["install", "codex-hooks"], repoRoot, { FOOKS_CODEX_HOME: codexHome });
   assert.equal(first.created, false);
   assert.equal(first.modified, true);
   assert.equal(first.installedEvents.length, 3);
@@ -877,23 +790,23 @@ test("install codex-hooks merges without clobbering existing hooks and stays ide
   assert.equal(merged.hooks.Stop[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
   assert.equal(merged.hooks.Stop[1].hooks[0].command, "node /tmp/omx-stop.js");
 
-  const second = run(["install", "codex-hooks"], repoRoot, { FE_LENS_CODEX_HOME: codexHome });
+  const second = run(["install", "codex-hooks"], repoRoot, { FOOKS_CODEX_HOME: codexHome });
   assert.equal(second.modified, false);
   assert.deepEqual(second.skippedEvents, ["SessionStart", "UserPromptSubmit", "Stop"]);
 });
 
-test("install codex-hooks rewrites legacy bridge commands to the canonical fooks command", () => {
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fe-lens-codex-home-"));
+test("install codex-hooks normalizes bridge commands to the canonical fooks command", () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
   const hooksPath = path.join(codexHome, "hooks.json");
   fs.writeFileSync(hooksPath, JSON.stringify({
     hooks: {
-      SessionStart: [{ matcher: "startup|resume", hooks: [{ type: "command", command: "fe-lens codex-runtime-hook --native-hook" }] }],
+      SessionStart: [{ matcher: "startup|resume", hooks: [{ type: "command", command: "fooks codex-runtime-hook --native-hook" }] }],
       UserPromptSubmit: [{ hooks: [{ type: "command", command: "node \"/Users/veluga/Documents/Workspace_Minseol/fooks/dist/cli/index.js\" codex-runtime-hook --native-hook" }] }],
-      Stop: [{ hooks: [{ type: "command", command: "fe-lens codex-runtime-hook --native-hook" }] }],
+      Stop: [{ hooks: [{ type: "command", command: "fooks codex-runtime-hook --native-hook" }] }],
     },
   }, null, 2));
 
-  const result = run(["install", "codex-hooks"], repoRoot, { FE_LENS_CODEX_HOME: codexHome });
+  const result = run(["install", "codex-hooks"], repoRoot, { FOOKS_CODEX_HOME: codexHome });
   assert.equal(result.created, false);
   assert.equal(result.modified, true);
   assert.deepEqual(result.installedEvents, []);
@@ -935,7 +848,7 @@ test("attach codex proves contract and runtime under minislively account context
 
 test("attach claude can report blocker without failing contract proof", () => {
   const tempDir = makeTempProject();
-  const result = run(["attach", "claude"], tempDir, { FE_LENS_CLAUDE_HOME: path.join(tempDir, ".missing-claude-home") });
+  const result = run(["attach", "claude"], tempDir, { FOOKS_CLAUDE_HOME: path.join(tempDir, ".missing-claude-home") });
   assert.equal(result.runtime, "claude");
   assert.equal(result.contractProof.passed, true);
   assert.equal(result.runtimeProof.status, "blocked");
@@ -952,19 +865,6 @@ test("attach can use explicit active account override instead of repository meta
   });
   assert.equal(result.runtimeProof.status, "passed");
   assert.ok(result.runtimeProof.details.includes("account-source=env"));
-});
-
-test("attach still reads legacy fe-lens config account when canonical config is absent", () => {
-  const tempDir = makeTempProject("https://github.com/example-org/temp-project.git");
-  fs.mkdirSync(path.join(tempDir, ".fe-lens"), { recursive: true });
-  fs.writeFileSync(
-    path.join(tempDir, ".fe-lens", "config.json"),
-    JSON.stringify({ targetAccount: "minislively" }, null, 2),
-  );
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
-  const result = run(["attach", "codex"], tempDir, { FOOKS_CODEX_HOME: codexHome });
-  assert.equal(result.runtimeProof.status, "passed");
-  assert.ok(result.runtimeProof.details.includes("account-source=config"));
 });
 
 test("attach codex blocks non-minislively account without writing runtime manifest", () => {

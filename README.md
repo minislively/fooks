@@ -1,8 +1,6 @@
 # fooks
 
 Product / package / primary CLI name: `fooks`
-Compatibility alias: legacy `fe-lens`
-
 Local frontend-only context compression engine for React/TSX files.
 
 ## What it does
@@ -25,7 +23,6 @@ Phase 1 is intentionally narrow:
 ```bash
 fooks init
 fooks scan
-fooks migrate project-state
 fooks extract <file> --json
 fooks extract <file> --model-payload
 fooks decide <file>
@@ -38,14 +35,14 @@ fooks attach codex
 fooks attach claude
 ```
 
-Early Phase 1 drafts may still refer to `fe-lens`. The shipping product name is `fooks`; `fe-lens` remains only for older internal path/env contracts during migration.
+Early Phase 1 drafts may still refer to `fe-lens`, but the shipping product name and all supported runtime/storage names are now `fooks`.
 
 ## Account context
 
 Attach commands resolve account context in this order:
 
-1. `FOOKS_ACTIVE_ACCOUNT` (fallback: `FE_LENS_ACTIVE_ACCOUNT`)
-2. `.fooks/config.json` `targetAccount` (fallback: `.fe-lens/config.json`)
+1. `FOOKS_ACTIVE_ACCOUNT`
+2. `.fooks/config.json` `targetAccount`
 3. `git remote get-url origin`
 4. `package.json.repository`
 
@@ -60,10 +57,10 @@ Attach uses two proof layers:
 
 Environment overrides for deterministic verification:
 
-- `FOOKS_CODEX_HOME` (fallback: `FE_LENS_CODEX_HOME`)
-- `FOOKS_CLAUDE_HOME` (fallback: `FE_LENS_CLAUDE_HOME`)
-- `FOOKS_TARGET_ACCOUNT` (fallback: `FE_LENS_TARGET_ACCOUNT`)
-- `FOOKS_ACTIVE_ACCOUNT` (fallback: `FE_LENS_ACTIVE_ACCOUNT`)
+- `FOOKS_CODEX_HOME`
+- `FOOKS_CLAUDE_HOME`
+- `FOOKS_TARGET_ACCOUNT`
+- `FOOKS_ACTIVE_ACCOUNT`
 
 If a runtime home is missing, attach returns an explicit blocker instead of a false success.
 
@@ -257,11 +254,10 @@ See `docs/real-repo-validation.md`.
 - Runtime attach remains environment-dependent by design, but now fails honestly with blocker evidence.
 
 
-Legacy compatibility:
+Canonical runtime/storage naming:
 
-- `fe-lens` still works as a legacy CLI alias for older internal contracts
-- canonical internal paths now use `.fooks/` and runtime-home `fooks/attachments`
-- legacy `.fe-lens/` paths and `FE_LENS_*` env names remain compatibility fallbacks during migration
-- direct CLI usage now emits stderr warnings when it falls back to legacy `FE_LENS_*` env names or `.fe-lens/`-only project state
-- `fooks migrate project-state` can move or merge project-local legacy `.fe-lens/` state into canonical `.fooks/`
-- final breaking-removal gates are tracked in [`docs/legacy-removal-checklist.md`](docs/legacy-removal-checklist.md)
+- CLI / package name: `fooks`
+- project state dir: `.fooks/`
+- runtime-home manifest dir: `fooks/attachments`
+- supported env names: `FOOKS_*`
+- legacy removal record: [`docs/legacy-removal-checklist.md`](docs/legacy-removal-checklist.md)

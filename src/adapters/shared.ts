@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { adapterDir, canonicalProjectDataDir, ensureFeLensDirs, legacyProjectDataDir } from "../core/paths";
+import { adapterDir, canonicalProjectDataDir, ensureProjectDataDirs } from "../core/paths";
 import type { AttachResult, CodexTrustStatus, ExtractionResult } from "../core/schema";
 
 type AccountDetection = {
@@ -18,10 +18,8 @@ function extractGithubOwner(value: string | undefined): string | null {
 }
 
 function configAccount(cwd: string): string | null {
-  const configFile = [path.join(canonicalProjectDataDir(cwd), "config.json"), path.join(legacyProjectDataDir(cwd), "config.json")].find((candidate) =>
-    fs.existsSync(candidate),
-  );
-  if (!configFile) return null;
+  const configFile = path.join(canonicalProjectDataDir(cwd), "config.json");
+  if (!fs.existsSync(configFile)) return null;
   const config = JSON.parse(fs.readFileSync(configFile, "utf8")) as { targetAccount?: string };
   return config.targetAccount ?? null;
 }
@@ -48,7 +46,7 @@ function packageRepositoryAccount(cwd: string): string | null {
 }
 
 export function detectAccountContext(cwd = process.cwd()): AccountDetection {
-  const envAccount = process.env.FOOKS_ACTIVE_ACCOUNT?.trim() || process.env.FE_LENS_ACTIVE_ACCOUNT?.trim();
+  const envAccount = process.env.FOOKS_ACTIVE_ACCOUNT?.trim();
   if (envAccount) {
     return { account: envAccount, source: "env" };
   }
@@ -86,7 +84,7 @@ export function contractProof(sample: ExtractionResult): { passed: boolean; deta
 }
 
 export function writeAdapterFiles(runtime: "codex" | "claude", cwd = process.cwd()): string[] {
-  ensureFeLensDirs(cwd);
+  ensureProjectDataDirs(cwd);
   const dir = adapterDir(runtime, cwd);
   fs.mkdirSync(dir, { recursive: true });
   const files = [
@@ -99,10 +97,7 @@ export function writeAdapterFiles(runtime: "codex" | "claude", cwd = process.cwd
 }
 
 function runtimeHome(runtime: "codex" | "claude"): string {
-  const override =
-    runtime === "codex"
-      ? process.env.FOOKS_CODEX_HOME || process.env.FE_LENS_CODEX_HOME
-      : process.env.FOOKS_CLAUDE_HOME || process.env.FE_LENS_CLAUDE_HOME;
+  const override = runtime === "codex" ? process.env.FOOKS_CODEX_HOME : process.env.FOOKS_CLAUDE_HOME;
   if (override) {
     return override;
   }
