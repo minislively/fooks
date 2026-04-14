@@ -1,0 +1,11 @@
+{
+  "presentational-simple-button": {
+    "expectedModes": ["raw"]
+  },
+  "form-form-section": {
+    "expectedModes": ["compressed"]
+  },
+  "page-dashboard-panel": {
+    "expectedModes": ["hybrid"]
+  }
+}

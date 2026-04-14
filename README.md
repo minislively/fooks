@@ -71,10 +71,20 @@ Current Phase 1 verification:
 - `npm run typecheck`
 - `npm test`
 - `npm run bench:cache`
+- `npm run bench:extract`
+- `npm run bench:stability`
+- `npm run bench:gate`
+- `npm run bench`
 - TypeScript diagnostics: 0 errors
 - value-proof:
-  - `FormSection.tsx`: 36.02% reduction
-  - `DashboardPanel.tsx`: 45.1% reduction
+  - `FormSection.tsx`: 34.59% reduction
+  - `DashboardPanel.tsx`: 46.63% reduction
+- latest benchmark baseline (`benchmarks/results/latest/benchmark.json`):
+  - cold avg: 315.99ms
+  - warm avg: 237.97ms
+  - partial single avg: 260.53ms
+  - partial multi avg: 256.94ms
+  - rescan after invalidation avg: 316.06ms
 
 ## Model-facing payload
 
@@ -219,22 +229,40 @@ If you prefer to edit the file manually, add this preset:
 
 When the current cwd is not a Codex-attached `fooks` project, the native hook bridge exits quietly without output.
 
-## Cache validation
+## Benchmark suite
 
-You can validate cache correctness and warm-cache performance with:
+You can now validate the phase-1 benchmark baseline with:
 
 ```bash
 npm test
 npm run bench:cache
+npm run bench:extract
+npm run bench:stability
+npm run bench:gate
+npm run bench
 ```
 
-The benchmark reports:
+Phase 1 keeps the suite **local-first**, **JSON-first**, and **dependency-neutral**.
 
-- cold scan time
-- warm scan time
-- partial invalidation time
-- refreshed vs reused cache entries
-- cache hit ratio
+- `bench:cache` keeps the legacy cache benchmark entrypoint, but now resolves to the dedicated scan/cache suite
+- `bench:extract` records file-type extraction cost and reduction metrics for the v1 fixture corpus
+- `bench:stability` captures repeated-run distributions for scan and extract timings
+- `bench:gate` evaluates lightweight preservation + mode-decision guardrails
+- `bench` runs the full benchmark suite and writes the canonical envelope used for before/after optimization comparisons
+
+Generated result artifacts are written under:
+
+- `benchmarks/results/latest/`
+- `benchmarks/results/history/`
+
+The canonical benchmark envelope includes:
+
+- benchmark version / run id / git SHA / node version / platform
+- scan/cache suite output
+- extract suite output
+- repeated-run stability output
+- preservation + mode-decision results
+- final gate pass/fail summary
 
 ## Real repo testing
 

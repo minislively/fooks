@@ -1,0 +1,23 @@
+{
+  "version": "v1",
+  "fixtures": [
+    {
+      "id": "presentational-simple-button",
+      "type": "presentational-component",
+      "filePath": "fixtures/raw/SimpleButton.tsx",
+      "reductionLowerBound": null
+    },
+    {
+      "id": "form-form-section",
+      "type": "form-component",
+      "filePath": "fixtures/compressed/FormSection.tsx",
+      "reductionLowerBound": 25
+    },
+    {
+      "id": "page-dashboard-panel",
+      "type": "dashboard-page-component",
+      "filePath": "fixtures/hybrid/DashboardPanel.tsx",
+      "reductionLowerBound": 25
+    }
+  ]
+}

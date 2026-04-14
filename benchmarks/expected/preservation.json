@@ -1,0 +1,26 @@
+{
+  "presentational-simple-button": {
+    "exportNames": ["SimpleButton"],
+    "componentName": "SimpleButton",
+    "propsPresent": ["label", "variant"],
+    "hookUsage": [],
+    "styleSystem": "tailwind",
+    "minimumImportCount": 1
+  },
+  "form-form-section": {
+    "exportNames": ["FormSection"],
+    "componentName": "FormSection",
+    "propsPresent": ["title", "description", "fields", "footerText"],
+    "hookUsage": [],
+    "styleSystem": "tailwind",
+    "minimumImportCount": 2
+  },
+  "page-dashboard-panel": {
+    "exportNames": ["DashboardPanel"],
+    "componentName": "DashboardPanel",
+    "propsPresent": ["userName", "alerts", "loading"],
+    "hookUsage": ["useState", "useEffect", "useMemo"],
+    "styleSystem": "tailwind",
+    "minimumImportCount": 1
+  }
+}
