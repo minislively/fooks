@@ -161,6 +161,8 @@ export type CodexNativeHookOutput = {
 export type IndexEntry = {
   filePath: string;
   fileHash: string;
+  fileSizeBytes?: number;
+  modifiedAtMs?: number;
   componentName?: string;
   exports: ExtractionResult["exports"];
   propsSummary?: string[];
@@ -173,12 +175,49 @@ export type IndexEntry = {
   kind: "component" | "linked-ts";
 };
 
+export type ScanObservability = {
+  timingsMs: {
+    discovery: number;
+    stat: number;
+    fileRead: number;
+    hash: number;
+    cacheRead: number;
+    extract: number;
+    cacheWrite: number;
+    indexWrite: number;
+    total: number;
+  };
+  counters: {
+    fileStatCount: number;
+    fileReadCount: number;
+    metadataReuseCount: number;
+    extractionCacheHits: number;
+    extractionCacheMisses: number;
+    reparsedFileCount: number;
+  };
+  discovery: {
+    directoriesVisited: number;
+    filesVisited: number;
+    componentFileCount: number;
+    linkedTsCount: number;
+    importProbeCount: number;
+    importResolveCacheHits: number;
+  };
+  slowFiles: Array<{
+    filePath: string;
+    kind: "component" | "linked-ts";
+    action: "reused" | "refreshed";
+    totalMs: number;
+  }>;
+};
+
 export type ScanResult = {
   projectRoot: string;
   scannedAt: string;
   files: IndexEntry[];
   reusedCacheEntries: number;
   refreshedEntries: number;
+  observability?: ScanObservability;
 };
 
 export type CodexTrustLifecycleState =

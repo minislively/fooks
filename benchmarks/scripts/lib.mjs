@@ -123,6 +123,7 @@ export function summariseNumbers(values) {
 export function aggregateScenario(samples) {
   const durations = samples.map((sample) => sample.durationMs);
   const counts = samples[0];
+  const observability = aggregateObservability(samples.map((sample) => sample.observability).filter(Boolean));
   return {
     ...summariseNumbers(durations),
     fileCount: counts.fileCount,
@@ -130,6 +131,28 @@ export function aggregateScenario(samples) {
     cacheHitCount: counts.cacheHitCount,
     cacheMissCount: counts.cacheMissCount,
     invalidatedFileCount: counts.invalidatedFileCount,
+    observability,
+  };
+}
+
+function aggregateNumericObjects(samples, fallback = {}) {
+  if (!samples.length) return fallback;
+  const keys = new Set(samples.flatMap((sample) => Object.keys(sample ?? {})));
+  return Object.fromEntries(
+    [...keys].map((key) => {
+      const values = samples.map((sample) => sample?.[key]).filter((value) => typeof value === "number");
+      return [key, values.length ? round(mean(values)) : fallback[key]];
+    }),
+  );
+}
+
+function aggregateObservability(samples) {
+  if (!samples.length) return undefined;
+  return {
+    timingsMs: aggregateNumericObjects(samples.map((sample) => sample.timingsMs), {}),
+    counters: aggregateNumericObjects(samples.map((sample) => sample.counters), {}),
+    discovery: aggregateNumericObjects(samples.map((sample) => sample.discovery), {}),
+    slowFiles: samples.find((sample) => Array.isArray(sample.slowFiles) && sample.slowFiles.length)?.slowFiles ?? [],
   };
 }
 
@@ -204,6 +227,7 @@ export function runScanScenario(cwd, changedFileCount = 0, invalidatedFileCount 
     cacheHitCount: value.reusedCacheEntries,
     cacheMissCount: value.refreshedEntries,
     invalidatedFileCount,
+    observability: value.observability,
     result: value,
   };
 }

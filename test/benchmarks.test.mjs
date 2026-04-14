@@ -67,6 +67,9 @@ test("scan-cache benchmark script emits expanded scenarios and writes the latest
   assert.ok("partialSingle" in result.runs);
   assert.ok("partialMulti" in result.runs);
   assert.ok("rescanAfterInvalidation" in result.runs);
+  assert.ok(result.runs.cold.observability.timingsMs.discovery >= 0);
+  assert.ok(result.runs.warm.observability.counters.metadataReuseCount > 0);
+  assert.ok(Array.isArray(result.runs.partialSingle.observability.slowFiles));
   assert.ok(fs.existsSync(result.artifacts.latestPath));
 });
 

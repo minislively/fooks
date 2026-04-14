@@ -1,122 +1,150 @@
-# Phase 2 Optimization Candidates — Benchmark-Driven Priorities
+# Phase 2 Optimization Candidates — Post-Observability Re-rank
 
-This note turns the phase-1 benchmark baseline into a short list of likely optimization targets.
+This note updates the optimization backlog after the first scan/discovery/cache-path pass added benchmark-visible observability and conservative unchanged-file short-circuiting.
 
-## Baseline reference
+## Source of truth
 
-Source of truth:
 - `benchmarks/results/latest/benchmark.json`
+- `benchmarks/results/latest/scan-cache.json`
 
-Latest observed phase-1 snapshot:
-- cold avg: `315.99ms`
-- warm avg: `237.97ms`
-- partial single avg: `260.53ms`
-- partial multi avg: `256.94ms`
-- rescan after invalidation avg: `316.06ms`
+## Latest snapshot
+
+- cold avg: `382.22ms`
+- warm avg: `261.29ms`
+- partial single avg: `300.95ms`
+- partial multi avg: `300.07ms`
+- rescan after invalidation avg: `400.66ms`
 - extract reduction:
   - `SimpleButton` → `raw` (no reduction target)
   - `FormSection` → `34.59%`
   - `DashboardPanel` → `46.63%`
 
-## What the numbers suggest
+## What changed in the first optimization pass
 
-### 1. The biggest opportunity is still in scan-path overhead, not extract/decide micro-cost
+The benchmark artifact now carries scan observability that did not exist in phase 1:
 
-The repeated-run benchmark shows that:
-- cold scan is much slower than extract timings
-- warm and partial scans are faster, but still dominated by repo traversal / file IO / cache bookkeeping rather than `decideMode`
-- extract timings are already in the low single-digit millisecond range for the current v1 fixtures
+- step timings (`discovery`, `stat`, `fileRead`, `hash`, `cacheRead`, `extract`, `cacheWrite`, `indexWrite`, `total`)
+- reuse counters (`metadataReuseCount`, `fileReadCount`, `reparsedFileCount`, extraction cache hits/misses)
+- discovery counters (`directoriesVisited`, `filesVisited`, `componentFileCount`, `linkedTsCount`, import probe/cache-hit counts)
+- per-scenario slow-file summaries
 
-**Implication:**
-Phase 2 should prioritize scan/discovery/cache-path work before trying to micro-optimize `decide` logic.
+The runtime behavior also changed conservatively:
 
-## Recommended priority order
+- warm scans now reuse prior index metadata instead of rereading every unchanged file
+- partial scans reread and reparse only changed files when `mtime + size` prove the rest are unchanged
+- linked `.ts` discovery now reuses in-scan import-resolution bookkeeping instead of probing the filesystem repeatedly for the same base path
 
-### P0 — Scan/discover/cache path
+## What the new numbers actually show
 
-#### Candidate A — Reduce repeated full-tree walking cost
-Current scan still pays for:
-- full project walk
-- import resolution for linked `.ts`
-- per-file reads even when caches are warm
+### 1. The internal scan path is now much cheaper on warm/partial runs than the end-to-end CLI wall time suggests
 
-Potential directions:
-- tighten walk filters earlier
-- reduce redundant path/extension checks
-- cache import-resolution side data during a single scan
-- avoid re-reading files where index metadata is already enough to short-circuit
+The top-line benchmark numbers still show warm/partial runs in the `261–301ms` range, but the new internal observability shows that the actual scan work is far smaller:
+
+- warm internal total: about `10.86ms`
+  - `fileReadCount: 0`
+  - `metadataReuseCount: 81`
+  - `reparsedFileCount: 0`
+- partial single internal total: about `27.11ms`
+  - `fileReadCount: 1`
+  - `metadataReuseCount: 80`
+  - `reparsedFileCount: 1`
+- partial multi internal total: about `24.28ms`
+  - `fileReadCount: 2`
+  - `metadataReuseCount: 79`
+  - `reparsedFileCount: 2`
+
+**Implication:** the remaining gap in CLI-visible benchmark time is no longer primarily “unchanged files are being reread and reparsed.” That part of the path is now mostly under control.
+
+### 2. Cold/rescan cost is still dominated by extract + cache-write, not decide
+
+Cold-path observability shows the biggest internal buckets are still:
+
+- `extract`
+- `cacheWrite`
+- to a lesser degree `discovery`
+
+`decide` remains a negligible per-file cost in the current fixture set, so phase-2 work should still avoid mode-decision micro-optimization as a leading priority.
+
+### 3. Discovery remains visible, but no longer looks like the only obvious culprit
+
+Discovery is still a real cost center and now measurable, but the new counters show that import-resolution caching already removes repeated probes inside one run.
+
+**Implication:** future discovery work should be justified by benchmark evidence, not by the old assumption that full-tree walking was automatically the dominant remaining bottleneck.
+
+## Re-ranked priority order
+
+### P0 — End-to-end benchmark/runtime overhead outside unchanged-file rereads
+
+Now that warm/partial scans avoid rereading unchanged files, the next high-value question is:
+
+> why does CLI-visible wall time remain materially larger than the internal scan total?
+
+Candidate directions:
+
+- measure CLI/process startup overhead more explicitly
+- inspect JSON artifact construction / serialization overhead in the benchmark path
+- reduce duplicated object construction between scan results and benchmark envelopes
+- audit whether history/latest writes are paying avoidable cost in local loops
 
 Why first:
-- largest end-to-end timing surface
-- benefits cold, warm, and partial paths together
 
-#### Candidate B — Improve partial invalidation precision
-Current partial single (`260.53ms`) and partial multi (`256.94ms`) are both better than cold, but still relatively close to warm scan cost.
+- the new observability narrowed the problem
+- remaining user-visible cost is now likely outside the old reread/reparse path
 
-Potential directions:
-- reduce work done after invalidation when unchanged files dominate
-- avoid recomputing linked-ts eligibility for untouched neighborhoods
-- shrink index rewrite / result materialization cost on small invalidations
+### P1 — Cold-path extract/cache-write cost
+
+Cold and full-rescan scenarios still spend most internal time in:
+
+- `extract`
+- `cacheWrite`
+
+Candidate directions:
+
+- reduce extraction work only after profiling the slow-file list and confirming repeated AST work is still dominant
+- batch or slim cache writes only if benchmark evidence shows persistence cost matters on representative repos
+- keep extract/decide semantics stable while tightening hot-path payload generation
 
 Why second:
-- likely highest practical UX gain for iterative real-world use
 
-### P1 — Result persistence / output path
+- this is the clearest remaining internal runtime surface
+- it matters most when caches are cold or deliberately invalidated
 
-#### Candidate C — Lower JSON/result writing overhead
-The suite currently persists canonical artifacts for every run.
+### P2 — Discovery-path follow-up
 
-Potential directions:
-- keep latest/history writes, but reduce repeated stringify/write overhead where possible
-- avoid duplicated object construction between suite reports and final envelope
-- make history writing optional behind an env flag if local iteration speed becomes an issue
+Candidate directions:
+
+- tighten walk filters further only if larger-corpus benchmarks show discovery scaling poorly
+- consider directory-level snapshots or narrower linked-ts neighborhood reuse only after measuring real repos beyond the synthetic fixture corpus
+- keep the linked-ts contract narrow unless product scope changes
 
 Why third:
-- useful if benchmark execution itself becomes part of the developer loop
-- lower impact on product runtime than scan-path work
 
-### P2 — Extraction quality/cost tradeoffs
+- discovery is visible but no longer obviously the best next dollar of effort after the first pass
 
-#### Candidate D — Compression strategy tuning for borderline files
-Current v1 fixtures show:
-- compressed/hybrid targets are already delivering meaningful reduction
-- raw presentational files can legitimately expand in JSON form
+## Explicit non-priority items
 
-Potential directions:
-- add more benchmark fixtures for borderline cases
-- tune compressed/hybrid boundaries only after more fixture diversity exists
-- optimize output shape only when it improves payload usefulness and not just byte count
+Do **not** lead with these unless new benchmark evidence changes the ranking:
 
-Why later:
-- current data does not show extraction cost as the dominant bottleneck
-- premature tuning risks optimizing benchmark cosmetics instead of real workflow speed
-
-## Explicit non-priority items for phase 2
-
-Do **not** lead with these unless benchmark evidence changes:
 - `decideMode` micro-optimizations alone
-- CSV export
-- visualization dashboard work
+- broad extract redesign without slow-file profiling evidence
+- aggressive skip/invalidation strategies that raise stale-result risk
+- CSV export or visualization work
 - broad framework expansion
-- richer trend/history system before runtime bottlenecks are addressed
 
-## Suggested next benchmark-informed experiments
+## Suggested next experiments
 
-1. Compare scan timings with a larger synthetic corpus size (`FOOKS_BENCH_COPY_COUNT`)
-2. Add one or two realistic borderline fixtures (state-light but long, or hook-heavy but shallow)
-3. Profile scan execution with lightweight internal timing splits:
-   - discovery
-   - cache read
-   - extract fallback path
-   - index/result write
-4. Re-rank priorities after a second baseline capture
+1. Split benchmark reporting between internal scan total and full CLI wall time in the summary layer.
+2. Capture serialization/write timings for benchmark artifact generation separately from core scan timings.
+3. Run the benchmark corpus with larger `FOOKS_BENCH_COPY_COUNT` values to see whether discovery or extract scales worse.
+4. Add one or two borderline fixtures before any extract/fast-path redesign.
 
-## Decision rule for future optimization PRs
+## Decision rule for the next optimization PR
 
-A phase-2 optimization PR should answer all of these with benchmark evidence:
-1. Which suite/layer got faster?
-2. By how much on the canonical JSON artifact?
-3. What stayed correct? (`bench:gate`, tests)
-4. Did the change improve cold, warm, or partial behavior — or only one path?
+A follow-up optimization PR should answer all of these with benchmark evidence:
 
-That keeps optimization work grounded in the phase-1 benchmark system instead of intuition.
+1. Which layer got faster: internal scan work, cold extract work, or end-to-end CLI/runtime overhead?
+2. What specific observability field proves it?
+3. What stayed correct? (`npm test`, `npm run bench:gate`, benchmark JSON contract)
+4. Did the change reduce real user-visible cost, or only move work between buckets?
+
+That keeps phase-2 work grounded in the new observability instead of returning to intuition-led tuning.

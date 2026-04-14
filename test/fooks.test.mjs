@@ -684,6 +684,9 @@ test("scan indexes component and qualifying linked ts but excludes generic utils
   assert.ok(!filePaths.includes(path.join("src", "date-utils.ts")));
   assert.ok(fs.existsSync(path.join(tempDir, ".fooks", "index.json")));
   assert.ok(result.refreshedEntries >= 5);
+  assert.ok(result.observability);
+  assert.ok(result.observability.timingsMs.discovery >= 0);
+  assert.ok(result.observability.counters.fileReadCount >= 5);
   const formSectionEntry = result.files.find((item) => item.filePath === path.join("src", "components", "FormSection.tsx"));
   assert.ok(formSectionEntry);
   assert.equal(typeof formSectionEntry.complexityScore, "number");
@@ -692,6 +695,8 @@ test("scan indexes component and qualifying linked ts but excludes generic utils
 
   const secondRun = run(["scan"], tempDir);
   assert.ok(secondRun.reusedCacheEntries >= 5);
+  assert.equal(secondRun.observability.counters.fileReadCount, 0);
+  assert.equal(secondRun.observability.counters.metadataReuseCount, secondRun.files.length);
 });
 
 test("scan excludes cross-folder linked ts even when directly imported", () => {
@@ -713,6 +718,8 @@ test("scan only refreshes changed files after cache warm-up", () => {
   const secondScan = run(["scan"], tempDir);
   assert.equal(secondScan.refreshedEntries, 1);
   assert.equal(secondScan.reusedCacheEntries, firstScan.files.length - 1);
+  assert.equal(secondScan.observability.counters.fileReadCount, 1);
+  assert.equal(secondScan.observability.counters.metadataReuseCount, firstScan.files.length - 1);
 
   const indexEntry = secondScan.files.find((item) => item.filePath === path.join("src", "components", "FormSection.tsx"));
   assert.ok(indexEntry);

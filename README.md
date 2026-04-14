@@ -66,7 +66,7 @@ If a runtime home is missing, attach returns an explicit blocker instead of a fa
 
 ## Verification snapshot
 
-Current Phase 1 verification:
+Current verification snapshot:
 
 - `npm run typecheck`
 - `npm test`
@@ -80,11 +80,16 @@ Current Phase 1 verification:
   - `FormSection.tsx`: 34.59% reduction
   - `DashboardPanel.tsx`: 46.63% reduction
 - latest benchmark baseline (`benchmarks/results/latest/benchmark.json`):
-  - cold avg: 315.99ms
-  - warm avg: 237.97ms
-  - partial single avg: 260.53ms
-  - partial multi avg: 256.94ms
-  - rescan after invalidation avg: 316.06ms
+  - cold avg: 382.22ms
+  - warm avg: 261.29ms
+  - partial single avg: 300.95ms
+  - partial multi avg: 300.07ms
+  - rescan after invalidation avg: 400.66ms
+  - scan observability now captures:
+    - step timings (`discovery`, `stat`, `fileRead`, `hash`, `cacheRead`, `extract`, `cacheWrite`, `indexWrite`, `total`)
+    - skip/hit/miss structure (`metadataReuseCount`, `fileReadCount`, `reparsedFileCount`)
+    - top slow files per scenario
+- optimization follow-up ranking: [`docs/benchmark-phase-2-optimization-candidates.md`](docs/benchmark-phase-2-optimization-candidates.md)
 
 ## Model-facing payload
 
@@ -259,6 +264,7 @@ The canonical benchmark envelope includes:
 
 - benchmark version / run id / git SHA / node version / platform
 - scan/cache suite output
+- scan observability for timing splits, skip/hit/miss counters, and slow files
 - extract suite output
 - repeated-run stability output
 - preservation + mode-decision results

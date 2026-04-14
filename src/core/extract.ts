@@ -293,6 +293,10 @@ function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<Extraction
 
 export function extractFile(filePath: string): ExtractionResult {
   const sourceText = fs.readFileSync(filePath, "utf8");
+  return extractSource(filePath, sourceText);
+}
+
+export function extractSource(filePath: string, sourceText: string): ExtractionResult {
   const fileHash = hashText(sourceText);
   const language = getLanguage(filePath);
   const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, getScriptKind(language));

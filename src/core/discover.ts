@@ -9,14 +9,30 @@ export type FileTarget = {
   kind: "component" | "linked-ts";
 };
 
-function walk(dir: string, out: string[]): void {
+export type DiscoveryStats = {
+  directoriesVisited: number;
+  filesVisited: number;
+  componentFileCount: number;
+  linkedTsCount: number;
+  importProbeCount: number;
+  importResolveCacheHits: number;
+};
+
+export type DiscoveryResult = {
+  targets: FileTarget[];
+  stats: DiscoveryStats;
+};
+
+function walk(dir: string, out: string[], stats: DiscoveryStats): void {
+  stats.directoriesVisited += 1;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (IGNORE.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      walk(full, out);
+      walk(full, out, stats);
       continue;
     }
+    stats.filesVisited += 1;
     out.push(full);
   }
 }
@@ -25,8 +41,18 @@ function readText(filePath: string): string {
   return fs.readFileSync(filePath, "utf8");
 }
 
-function resolveRelativeImport(fromFile: string, specifier: string): string | null {
+function resolveRelativeImport(
+  fromFile: string,
+  specifier: string,
+  existingFiles: ReadonlySet<string>,
+  resolutionCache: Map<string, string | null>,
+  stats: DiscoveryStats,
+): string | null {
   const base = path.resolve(path.dirname(fromFile), specifier);
+  if (resolutionCache.has(base)) {
+    stats.importResolveCacheHits += 1;
+    return resolutionCache.get(base) ?? null;
+  }
   const candidates = [
     base,
     `${base}.ts`,
@@ -37,10 +63,13 @@ function resolveRelativeImport(fromFile: string, specifier: string): string | nu
     path.join(base, "index.jsx"),
   ];
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+    stats.importProbeCount += 1;
+    if (existingFiles.has(candidate)) {
+      resolutionCache.set(base, candidate);
       return candidate;
     }
   }
+  resolutionCache.set(base, null);
   return null;
 }
 
@@ -49,14 +78,19 @@ type RelativeImport = {
   isTypeOnly: boolean;
 };
 
-function relativeImports(filePath: string): RelativeImport[] {
+function relativeImports(
+  filePath: string,
+  existingFiles: ReadonlySet<string>,
+  resolutionCache: Map<string, string | null>,
+  stats: DiscoveryStats,
+): RelativeImport[] {
   const text = readText(filePath);
   const matches = text.matchAll(/import\s+(type\s+)?(?:[\s\S]*?)from\s+["'](\.[^"']+)["']|import\s+["'](\.[^"']+)["']/g);
   const imports = new Map<string, RelativeImport>();
   for (const match of matches) {
     const specifier = match[2] ?? match[3];
     if (!specifier) continue;
-    const resolved = resolveRelativeImport(filePath, specifier);
+    const resolved = resolveRelativeImport(filePath, specifier, existingFiles, resolutionCache, stats);
     if (resolved) {
       imports.set(resolved, {
         resolved,
@@ -87,22 +121,42 @@ function isQualifyingLinkedTs(filePath: string, componentFile: string, isTypeOnl
   return isNamedContractFile || isComponentScopedUtility;
 }
 
-export function discoverProjectFiles(cwd = process.cwd()): FileTarget[] {
+export function discoverProjectFilesWithStats(cwd = process.cwd()): DiscoveryResult {
   const allFiles: string[] = [];
-  walk(cwd, allFiles);
+  const stats: DiscoveryStats = {
+    directoriesVisited: 0,
+    filesVisited: 0,
+    componentFileCount: 0,
+    linkedTsCount: 0,
+    importProbeCount: 0,
+    importResolveCacheHits: 0,
+  };
+  walk(cwd, allFiles, stats);
+  const existingFiles = new Set(allFiles);
+  const resolutionCache = new Map<string, string | null>();
   const componentFiles = allFiles.filter((file) => COMPONENT_EXTS.has(path.extname(file)));
+  stats.componentFileCount = componentFiles.length;
   const linkedTs = new Set<string>();
 
   for (const componentFile of componentFiles) {
-    for (const imported of relativeImports(componentFile)) {
+    for (const imported of relativeImports(componentFile, existingFiles, resolutionCache, stats)) {
       if (path.extname(imported.resolved) === ".ts" && isQualifyingLinkedTs(imported.resolved, componentFile, imported.isTypeOnly)) {
         linkedTs.add(imported.resolved);
       }
     }
   }
 
-  return [
-    ...componentFiles.sort().map((filePath) => ({ filePath, kind: "component" as const })),
-    ...[...linkedTs].sort().map((filePath) => ({ filePath, kind: "linked-ts" as const })),
-  ];
+  stats.linkedTsCount = linkedTs.size;
+
+  return {
+    targets: [
+      ...componentFiles.sort().map((filePath) => ({ filePath, kind: "component" as const })),
+      ...[...linkedTs].sort().map((filePath) => ({ filePath, kind: "linked-ts" as const })),
+    ],
+    stats,
+  };
+}
+
+export function discoverProjectFiles(cwd = process.cwd()): FileTarget[] {
+  return discoverProjectFilesWithStats(cwd).targets;
 }
