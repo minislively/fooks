@@ -25,6 +25,7 @@ Phase 1 is intentionally narrow:
 ```bash
 fooks init
 fooks scan
+fooks migrate project-state
 fooks extract <file> --json
 fooks extract <file> --model-payload
 fooks decide <file>
@@ -264,3 +265,4 @@ Legacy compatibility:
 - canonical internal paths now use `.fooks/` and runtime-home `fooks/attachments`
 - legacy `.fe-lens/` paths and `FE_LENS_*` env names remain compatibility fallbacks during migration
 - direct CLI usage now emits stderr warnings when it falls back to legacy `FE_LENS_*` env names or `.fe-lens/`-only project state
+- `fooks migrate project-state` can move or merge project-local legacy `.fe-lens/` state into canonical `.fooks/`

@@ -296,7 +296,7 @@ test("deprecated fxxks alias warns and advertises fooks usage", () => {
   const result = runViaScript(aliasCli, ["unknown-command"]);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /'fxxks' is deprecated; use 'fooks'/);
-  assert.match(result.stderr, /Usage: fooks <init\|scan\|extract\|decide\|attach\|install\|status\|codex-pre-read\|codex-runtime-hook>/);
+  assert.match(result.stderr, /Usage: fooks <init\|scan\|migrate\|extract\|decide\|attach\|install\|status\|codex-pre-read\|codex-runtime-hook>/);
 });
 
 test("legacy FE_LENS env usage warns on user-facing CLI flows", () => {
@@ -313,6 +313,49 @@ test("legacy .fe-lens-only project state warns on user-facing CLI flows", () => 
   const result = runCliDetailed(["scan"], tempDir);
   assert.equal(result.status, 0);
   assert.match(result.stderr, /Legacy '\.fe-lens' project state detected; prefer '\.fooks'/);
+});
+
+test("migrate project-state renames legacy .fe-lens into canonical .fooks when no canonical state exists", () => {
+  const tempDir = makeTempProject();
+  fs.mkdirSync(path.join(tempDir, ".fe-lens", "cache"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, ".fe-lens", "config.json"), JSON.stringify({ targetAccount: "minislively" }, null, 2));
+  fs.writeFileSync(path.join(tempDir, ".fe-lens", "cache", "legacy.json"), JSON.stringify({ ok: true }, null, 2));
+
+  const result = run(["migrate", "project-state"], tempDir);
+  assert.equal(result.action, "renamed-legacy");
+  assert.match(result.legacyDir, /(?:^|\/)\.fe-lens$/);
+  assert.match(result.canonicalDir, /(?:^|\/)\.fooks$/);
+  assert.equal(fs.existsSync(path.join(tempDir, ".fe-lens")), false);
+  assert.ok(fs.existsSync(path.join(tempDir, ".fooks", "config.json")));
+  assert.ok(fs.existsSync(path.join(tempDir, ".fooks", "cache", "legacy.json")));
+});
+
+test("migrate project-state merges missing legacy files without overwriting canonical files", () => {
+  const tempDir = makeTempProject();
+  fs.mkdirSync(path.join(tempDir, ".fe-lens", "cache"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, ".fe-lens", "config.json"), JSON.stringify({ targetAccount: "legacy" }, null, 2));
+  fs.writeFileSync(path.join(tempDir, ".fe-lens", "cache", "legacy-only.json"), JSON.stringify({ source: "legacy" }, null, 2));
+
+  fs.mkdirSync(path.join(tempDir, ".fooks", "cache"), { recursive: true });
+  fs.writeFileSync(path.join(tempDir, ".fooks", "config.json"), JSON.stringify({ targetAccount: "canonical" }, null, 2));
+
+  const result = run(["migrate", "project-state"], tempDir);
+  assert.equal(result.action, "merged-legacy");
+  assert.ok(result.copiedPaths.includes(path.join(".fooks", "cache", "legacy-only.json")));
+  assert.ok(result.skippedPaths.includes(path.join(".fooks", "config.json")));
+  const canonicalConfig = JSON.parse(fs.readFileSync(path.join(tempDir, ".fooks", "config.json"), "utf8"));
+  assert.equal(canonicalConfig.targetAccount, "canonical");
+  assert.ok(fs.existsSync(path.join(tempDir, ".fe-lens", "config.json")));
+});
+
+test("migrate project-state is idempotent when legacy state is already absent", () => {
+  const tempDir = makeTempProject();
+  fs.mkdirSync(path.join(tempDir, ".fooks"), { recursive: true });
+
+  const result = run(["migrate", "project-state"], tempDir);
+  assert.equal(result.action, "noop");
+  assert.equal(result.reason, "no-legacy-project-state");
+  assert.match(result.canonicalDir, /(?:^|\/)\.fooks$/);
 });
 
 test("runtime prompt parser finds eligible tsx/jsx paths and escape hatches", () => {

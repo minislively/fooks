@@ -5,6 +5,7 @@ import { ensureFeLensDirs, configPath, canonicalProjectDataDir, legacyProjectDat
 import { scanProject } from "../core/scan";
 import { discoverProjectFiles } from "../core/discover";
 import { extractFile } from "../core/extract";
+import { migrateProjectState } from "../core/migrate";
 import { toModelFacingPayload } from "../core/payload/model-facing";
 import { decideMode } from "../core/decide";
 import { attachCodex } from "../adapters/codex";
@@ -210,6 +211,13 @@ async function run(): Promise<void> {
       print(result);
       return;
     }
+    case "migrate": {
+      if (arg1 !== "project-state") {
+        throw new Error("migrate expects 'project-state'");
+      }
+      print(migrateProjectState(process.cwd()));
+      return;
+    }
     case "extract": {
       const { filePath: file, modelPayload } = parseExtractArgs(rest);
       const result = extractFile(file);
@@ -281,7 +289,8 @@ async function run(): Promise<void> {
     }
     default:
       console.error(`Unknown command: ${command ?? "<none>"}`);
-      console.error(`Usage: ${displayCliName} <init|scan|extract|decide|attach|install|status|codex-pre-read|codex-runtime-hook>`);
+      console.error(`Usage: ${displayCliName} <init|scan|migrate|extract|decide|attach|install|status|codex-pre-read|codex-runtime-hook>`);
+      console.error(`       ${displayCliName} migrate project-state`);
       console.error(`       ${displayCliName} extract <file> [--model-payload] [--json]`);
       console.error(`       ${displayCliName} install codex-hooks`);
       console.error(`       ${displayCliName} codex-pre-read <file> [--json]`);
