@@ -26,6 +26,9 @@ test("frontend harness defaults to repo-local reports and preserves the legacy c
   assert.equal(result.defaultReportsDir, defaultReportsDir);
   assert.equal(result.runner, "omx");
   assert.equal(result.runnerLabel, "omx exec --full-auto");
+  assert.equal(result.repeat, 1);
+  assert.match(result.reportPath, /benchmark-full-\d+\.json$/);
+  assert.match(result.artifactDir, /artifacts\/benchmark-full-\d+$/);
   assert.equal(result.selectedCases.length, 5);
   assert.deepEqual(
     result.selectedCases.map((entry) => [entry.task, entry.repo]),
@@ -45,13 +48,15 @@ test("frontend harness supports single-case round-1 configuration and report dir
     "Find an existing email form and add inline validation, a red error message, and a loading state during submit.";
   const reportsDir = path.join(fs.realpathSync.native("/tmp"), "fooks-round1-reports");
   const result = runRunnerConfig(
-    ["--runner", "codex", "--repo", "formbricks", "--task", "T5", "--task-prompt", customPrompt],
+    ["--runner", "codex", "--repeat", "3", "--repo", "formbricks", "--task", "T5", "--task-prompt", customPrompt],
     { BENCHMARK_REPORTS_DIR: "/tmp/fooks-round1-reports" },
   );
 
   assert.equal(result.reportsDir, reportsDir);
   assert.equal(result.runner, "codex");
   assert.equal(result.runnerLabel, "codex exec --full-auto");
+  assert.equal(result.repeat, 3);
+  assert.equal(result.artifactDir.startsWith(path.join(reportsDir, "artifacts")), true);
   assert.equal(result.selectedCases.length, 1);
   assert.equal(result.selectedCases[0].repo, "formbricks");
   assert.equal(result.selectedCases[0].task, "T5");

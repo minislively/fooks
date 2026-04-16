@@ -12,6 +12,7 @@ import shutil
 import sys
 from pathlib import Path
 from datetime import datetime
+from statistics import median
 
 # Auto-detect paths
 SCRIPT_DIR = Path(__file__).parent.resolve()
@@ -109,6 +110,10 @@ ROUND1_NOTES = {
         "prompt": "Identical task text for vanilla and fooks variants.",
         "codexHome": "Each variant uses an isolated CODEX_HOME with auth.json and config.toml symlinked from the same host account.",
         "variantDifference": "The fooks variant runs fooks init/scan/attach before the same agent command; vanilla does not.",
+    },
+    "artifactCapture": {
+        "scope": "git diff patch, git diff --stat, git diff --check, changed file list, task-specific acceptance score when available.",
+        "purpose": "Separate output parity and quality evidence from runtime/token measurements.",
     }
 }
 
@@ -133,6 +138,7 @@ def parse_args():
     )
     parser.add_argument("--task-prompt", help="Override the selected task prompt for one-off benchmark runs")
     parser.add_argument("--reports-dir", help="Override the directory used to save benchmark reports")
+    parser.add_argument("--repeat", type=int, default=1, help="Repeat each selected task/repo pair N times")
     parser.add_argument("--dry-run", action="store_true", help="Print resolved configuration and exit")
     parser.add_argument("--list-cases", action="store_true", help="Print the selected task/repo cases and exit")
     return parser.parse_args()
@@ -267,6 +273,75 @@ def changed_files(worktree_path):
         capture_output=True, text=True
     )
     return [f for f in files_result.stdout.strip().split('\n') if f]
+
+def run_git(worktree_path, *args):
+    return subprocess.run(
+        ["git", *args],
+        cwd=worktree_path,
+        capture_output=True,
+        text=True,
+    )
+
+def acceptance_score(task, files, patch_text):
+    """Score task-specific output quality when the prompt is explicit enough."""
+    prompt = task.get("prompt", "")
+    if "DeleteAccountModal/index.tsx" not in prompt:
+        return {
+            "available": False,
+            "score": None,
+            "max_score": None,
+            "checks": [],
+            "reason": "No task-specific scorer for this prompt.",
+        }
+
+    expected_file = "apps/web/modules/account/components/DeleteAccountModal/index.tsx"
+    checks = [
+        ("target_file_only", files == [expected_file]),
+        ("input_type_email", 'type="email"' in patch_text),
+        ("inline_red_error", "text-red-" in patch_text or "text-destructive" in patch_text),
+        ("invalid_email_state", "invalid" in patch_text.lower() or "malformed" in patch_text.lower()),
+        ("non_matching_email_state", "match" in patch_text.lower() or "user.email" in patch_text),
+        ("disabled_condition_updated", "disabled={" in patch_text and ("isDeleteDisabled" in patch_text or "deleting" in patch_text)),
+        ("submit_guard", "return" in patch_text and "deleteAccount" in patch_text),
+        ("aria_invalid", "aria-invalid" in patch_text),
+        ("aria_describedby", "aria-describedby" in patch_text),
+        ("existing_flow_preserved", "deleteUserAction" in patch_text and "signOutWithAudit" in patch_text),
+    ]
+
+    passed = sum(1 for _, ok in checks if ok)
+    return {
+        "available": True,
+        "score": passed,
+        "max_score": len(checks),
+        "checks": [{"name": name, "passed": ok} for name, ok in checks],
+    }
+
+def capture_artifact(worktree_path, task, variant, artifact_dir, label):
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    safe_label = re.sub(r"[^a-zA-Z0-9_.-]+", "-", label).strip("-")
+    patch_path = artifact_dir / f"{safe_label}-{variant}.patch"
+    diffstat_path = artifact_dir / f"{safe_label}-{variant}.diffstat"
+
+    patch = run_git(worktree_path, "diff").stdout
+    diffstat = run_git(worktree_path, "diff", "--stat").stdout
+    diff_check = run_git(worktree_path, "diff", "--check")
+    files = changed_files(worktree_path)
+
+    patch_path.write_text(patch)
+    diffstat_path.write_text(diffstat)
+
+    return {
+        "patch_path": str(patch_path),
+        "diffstat_path": str(diffstat_path),
+        "patch_bytes": len(patch.encode()),
+        "diffstat": diffstat,
+        "diff_check": {
+            "success": diff_check.returncode == 0,
+            "stdout": output_tail(diff_check.stdout, 1000),
+            "stderr": output_tail(diff_check.stderr, 1000),
+        },
+        "acceptance": acceptance_score(task, files, patch),
+    }
 
 def output_tail(value, limit=2000):
     if not value:
@@ -407,6 +482,21 @@ def assess_benchmark_risks(results):
         r for r in successful_pairs
         if actual_tokens_available and r["fooks"]["tokens_used"] > r["vanilla"]["tokens_used"]
     ]
+    acceptance_pairs = [
+        (
+            r.get("vanilla", {}).get("artifact", {}).get("acceptance"),
+            r.get("fooks", {}).get("artifact", {}).get("acceptance"),
+        )
+        for r in successful_pairs
+    ]
+    acceptance_pairs = [
+        (vanilla, fooks) for vanilla, fooks in acceptance_pairs
+        if vanilla and fooks and vanilla.get("available") and fooks.get("available")
+    ]
+    fooks_quality_regressions = [
+        (vanilla, fooks) for vanilla, fooks in acceptance_pairs
+        if fooks.get("score", 0) < vanilla.get("score", 0)
+    ]
 
     risks = [
         {
@@ -432,6 +522,15 @@ def assess_benchmark_risks(results):
             "level": "low" if cleanup_ok else "high",
             "evidence": f"cleanup_removed={cleanup_ok}",
             "interpretation": "Worktree residue can contaminate reruns if cleanup fails.",
+        },
+        {
+            "name": "artifact_quality",
+            "level": "high" if fooks_quality_regressions else "low" if acceptance_pairs else "medium",
+            "evidence": (
+                f"acceptance_scored_pairs={len(acceptance_pairs)}, "
+                f"fooks_lower_score_pairs={len(fooks_quality_regressions)}"
+            ),
+            "interpretation": "Output parity matters as much as time/token deltas; inspect captured patches when fooks scores lower.",
         },
         {
             "name": "wall_clock_noise",
@@ -463,7 +562,65 @@ def assess_benchmark_risks(results):
         "risks": risks,
     }
 
-def run_vanilla_agent(worktree, task, runner):
+def percent_delta(before, after):
+    if before is None or after is None or before == 0:
+        return None
+    return (before - after) / before * 100
+
+def successful_pairs(results):
+    return [
+        r for r in results
+        if r.get("vanilla", {}).get("success") and r.get("fooks", {}).get("success")
+    ]
+
+def summarize_results(results):
+    pairs = successful_pairs(results)
+    token_results = [r["tokens"] for r in results if "tokens" in r]
+    exec_improvements = [r["improvement"]["exec"] for r in pairs if "improvement" in r]
+    total_improvements = [r["improvement"]["total"] for r in pairs if "improvement" in r]
+    token_reductions = [
+        percent_delta(r["vanilla"].get("tokens_used"), r["fooks"].get("tokens_used"))
+        for r in pairs
+        if r["vanilla"].get("tokens_used") is not None and r["fooks"].get("tokens_used") is not None
+    ]
+    token_reductions = [value for value in token_reductions if value is not None]
+    acceptance_pairs = [
+        {
+            "iteration": r.get("iteration"),
+            "vanilla": r["vanilla"].get("artifact", {}).get("acceptance"),
+            "fooks": r["fooks"].get("artifact", {}).get("acceptance"),
+        }
+        for r in pairs
+        if r["vanilla"].get("artifact", {}).get("acceptance", {}).get("available")
+        and r["fooks"].get("artifact", {}).get("acceptance", {}).get("available")
+    ]
+
+    return {
+        "total_benchmarks": len(results),
+        "successful_pairs": len(pairs),
+        "vanilla_success": sum(1 for r in results if r.get("vanilla", {}).get("success")),
+        "fooks_success": sum(1 for r in results if r.get("fooks", {}).get("success")),
+        "same_file_pairs": sum(
+            1 for r in pairs
+            if r.get("vanilla", {}).get("files_list") == r.get("fooks", {}).get("files_list")
+            and bool(r.get("vanilla", {}).get("files_list"))
+        ),
+        "avg_token_reduction": (
+            sum(item["reduction_pct"] for item in token_results) / len(token_results)
+            if token_results else 0
+        ),
+        "avg_tokens_saved": (
+            sum(item["tokens_saved"] for item in token_results) / len(token_results)
+            if token_results else 0
+        ),
+        "median_exec_improvement": median(exec_improvements) if exec_improvements else None,
+        "median_total_improvement": median(total_improvements) if total_improvements else None,
+        "median_runtime_token_reduction": median(token_reductions) if token_reductions else None,
+        "runtime_token_reductions": token_reductions,
+        "acceptance_pairs": acceptance_pairs,
+    }
+
+def run_vanilla_agent(worktree, task, runner, artifact_dir=None, label="benchmark"):
     """Run vanilla agent runner"""
     start = time.time()
 
@@ -477,6 +634,7 @@ def run_vanilla_agent(worktree, task, runner):
         duration = int((time.time() - start) * 1000)
 
         files = changed_files(worktree["path"])
+        artifact = capture_artifact(worktree["path"], task, "vanilla", artifact_dir, label) if artifact_dir else None
 
         return {
             "success": result.returncode == 0,
@@ -484,6 +642,7 @@ def run_vanilla_agent(worktree, task, runner):
             "files": len(files),
             "files_list": files,
             "tokens_used": parse_tokens_used(result.stderr),
+            "artifact": artifact,
             "command": command_metadata(worktree, task, runner),
             "stdout_tail": output_tail(result.stdout),
             "stderr_tail": output_tail(result.stderr, 1000),
@@ -494,7 +653,7 @@ def run_vanilla_agent(worktree, task, runner):
     except Exception as e:
         return {"success": False, "duration_ms": int((time.time() - start) * 1000), "files": 0, "files_list": [], "error": str(e)}
 
-def run_fooks_agent(worktree, task, runner):
+def run_fooks_agent(worktree, task, runner, artifact_dir=None, label="benchmark"):
     """Run fooks-prepared agent runner"""
     prepare = fooks_prepare(worktree, runner)
     fooks_scan_time = prepare["duration_ms"]
@@ -523,6 +682,7 @@ def run_fooks_agent(worktree, task, runner):
         duration = int((time.time() - start) * 1000)
 
         files = changed_files(worktree["path"])
+        artifact = capture_artifact(worktree["path"], task, "fooks", artifact_dir, label) if artifact_dir else None
 
         return {
             "success": result.returncode == 0,
@@ -532,6 +692,7 @@ def run_fooks_agent(worktree, task, runner):
             "files": len(files),
             "files_list": files,
             "tokens_used": parse_tokens_used(result.stderr),
+            "artifact": artifact,
             "prepare": prepare,
             "command": command_metadata(worktree, task, runner),
             "stdout_tail": output_tail(result.stdout),
@@ -546,19 +707,21 @@ def run_fooks_agent(worktree, task, runner):
                 "scan_time": fooks_scan_time, "total_time": fooks_scan_time + int((time.time() - start) * 1000),
                 "files": 0, "files_list": [], "error": str(e)}
 
-def run_benchmark(task, repo_name, runner):
+def run_benchmark(task, repo_name, runner, iteration=1, artifact_dir=None):
     """Run full benchmark for one task on one repo"""
     print(f"\n{'='*70}")
     print(f"[{task['id']}] {task['name']} ({task['difficulty']})")
     print(f"Repo: {repo_name}")
     print(f"Runner: {runner_label(runner)}")
+    print(f"Iteration: {iteration}")
     print(f"{'='*70}")
 
     repo_path = REPOS[repo_name]
     if not repo_path.exists():
         raise FileNotFoundError(f"Repository checkout not found at {repo_path}")
     results = {"task": task['id'], "task_name": task['name'], "repo": repo_name,
-               "difficulty": task['difficulty'], "timestamp": datetime.now().isoformat()}
+               "difficulty": task['difficulty'], "iteration": iteration,
+               "timestamp": datetime.now().isoformat()}
 
     # Token estimate (once per repo)
     print("  Calculating token estimates...")
@@ -572,7 +735,8 @@ def run_benchmark(task, repo_name, runner):
     # Vanilla
     print("\n  [VANILLA] Running...")
     wt_v = create_worktree(repo_path, task['id'], "vanilla")
-    res_v = run_vanilla_agent(wt_v, task, runner)
+    artifact_label = f"{repo_name}-{task['id']}-iter{iteration}"
+    res_v = run_vanilla_agent(wt_v, task, runner, artifact_dir, artifact_label)
     res_v["cleanup"] = remove_worktree(wt_v, repo_path)
     results["vanilla"] = res_v
     print(f"    {'✓' if res_v['success'] else '✗'} {res_v['duration_ms']:,}ms, {res_v['files']} files")
@@ -584,7 +748,7 @@ def run_benchmark(task, repo_name, runner):
     # Fooks
     print("\n  [FOOKS] Running...")
     wt_f = create_worktree(repo_path, task['id'], "fooks")
-    res_f = run_fooks_agent(wt_f, task, runner)
+    res_f = run_fooks_agent(wt_f, task, runner, artifact_dir, artifact_label)
     res_f["cleanup"] = remove_worktree(wt_f, repo_path)
     results["fooks"] = res_f
     print(f"    {'✓' if res_f['success'] else '✗'} exec:{res_f['duration_ms']:,}ms + scan:{res_f['scan_time']:,}ms = {res_f['total_time']:,}ms, {res_f['files']} files")
@@ -607,8 +771,13 @@ def run_benchmark(task, repo_name, runner):
 
 def main():
     args = parse_args()
+    if args.repeat < 1:
+        raise SystemExit("--repeat must be at least 1")
     reports_dir = resolve_reports_dir(args.reports_dir)
     test_cases = resolve_test_cases(args)
+    run_id = int(time.time())
+    report_path = reports_dir / f"benchmark-full-{run_id}.json"
+    artifact_dir = reports_dir / "artifacts" / f"benchmark-full-{run_id}"
 
     if args.list_cases or args.dry_run:
         resolved_tasks = []
@@ -628,6 +797,9 @@ def main():
             "reposDir": str(REPOS_DIR),
             "runner": args.runner,
             "runnerLabel": runner_label(args.runner),
+            "repeat": args.repeat,
+            "reportPath": str(report_path),
+            "artifactDir": str(artifact_dir),
             "selectedCases": resolved_tasks,
             "availableRepos": sorted(REPOS.keys()),
             "availableTasks": sorted(build_task_index().keys()),
@@ -642,8 +814,10 @@ def main():
     print(f"Tasks: {', '.join(sorted(build_task_index().keys()))}")
     print(f"Repos: {', '.join(sorted(REPOS.keys()))}")
     print(f"Runner: {runner_label(args.runner)}")
+    print(f"Repeat: {args.repeat}")
     print(f"Variants: Vanilla vs Fooks (with token estimates)")
     print(f"Reports dir: {reports_dir}")
+    print(f"Artifacts dir: {artifact_dir}")
     print("="*70)
 
     all_results = []
@@ -651,25 +825,26 @@ def main():
     for task_id, repo_name in test_cases:
         task = resolve_task(task_id, args.task_prompt if (args.repo and args.task == task_id) else None)
 
-        try:
-            result = run_benchmark(task, repo_name, args.runner)
-            all_results.append(result)
-        except Exception as e:
-            print(f"\n  ✗ Benchmark failed: {e}")
-            all_results.append({
-                "task": task_id, "repo": repo_name, "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            })
+        for iteration in range(1, args.repeat + 1):
+            try:
+                result = run_benchmark(task, repo_name, args.runner, iteration, artifact_dir)
+                all_results.append(result)
+            except Exception as e:
+                print(f"\n  ✗ Benchmark failed: {e}")
+                all_results.append({
+                    "task": task_id, "repo": repo_name, "iteration": iteration,
+                    "error": str(e), "timestamp": datetime.now().isoformat()
+                })
 
-        # Cool down between tests
-        time.sleep(5)
+            # Cool down between tests
+            time.sleep(5)
 
     # Generate final report
     print("\n" + "="*70)
     print("FINAL SUMMARY")
     print("="*70)
 
-    # Aggregate results
+    summary = summarize_results(all_results)
     vanilla_success = [r for r in all_results if r.get("vanilla", {}).get("success")]
     fooks_success = [r for r in all_results if r.get("fooks", {}).get("success")]
 
@@ -688,29 +863,27 @@ def main():
         print(f"\nAvg Vanilla time: {avg_v:,.0f}ms")
         print(f"Avg Fooks exec: {avg_f:,.0f}ms ({(avg_v-avg_f)/avg_v*100:+.1f}%)")
         print(f"Avg Fooks total: {avg_f_total:,.0f}ms ({(avg_v-avg_f_total)/avg_v*100:+.1f}%)")
+        if summary["median_total_improvement"] is not None:
+            print(f"Median Fooks total improvement: {summary['median_total_improvement']:+.1f}%")
+        if summary["median_runtime_token_reduction"] is not None:
+            print(f"Median runtime token reduction: {summary['median_runtime_token_reduction']:+.1f}%")
 
     # Token summary
-    avg_reduction = sum(r["tokens"]["reduction_pct"] for r in all_results if "tokens" in r) / len(all_results) if all_results else 0
-    avg_saved = sum(r["tokens"]["tokens_saved"] for r in all_results if "tokens" in r) / len(all_results) if all_results else 0
+    avg_reduction = summary["avg_token_reduction"]
+    avg_saved = summary["avg_tokens_saved"]
 
     print(f"\nAvg token reduction: {avg_reduction:.1f}%")
     print(f"Avg tokens saved: ~{avg_saved:,.0f} per session")
 
     # Save report
-    report_path = reports_dir / f"benchmark-full-{int(time.time())}.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
     with open(report_path, 'w') as f:
         json.dump({
             "timestamp": datetime.now().isoformat(),
-            "summary": {
-                "total_benchmarks": len(all_results),
-                "vanilla_success": len(vanilla_success),
-                "fooks_success": len(fooks_success),
-                "avg_token_reduction": avg_reduction,
-                "avg_tokens_saved": avg_saved
-            },
+            "summary": summary,
             "notes": ROUND1_NOTES,
             "riskAssessment": assess_benchmark_risks(all_results),
+            "artifactDir": str(artifact_dir),
             "results": all_results
         }, f, indent=2)
 

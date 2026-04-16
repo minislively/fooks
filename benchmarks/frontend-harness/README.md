@@ -110,6 +110,7 @@ Formbricks:
 cd benchmarks/frontend-harness/runners
 python3 full-benchmark-suite.py \
   --runner codex \
+  --repeat 3 \
   --repo formbricks \
   --task T5 \
   --task-prompt "Modify exactly apps/web/modules/account/components/DeleteAccountModal/index.tsx. Improve the account deletion email confirmation field by using type=email, showing a small red inline error message under the input after the user types a non-matching or malformed email, and ensuring deletion stays disabled while the confirmation email is invalid or the delete action is already running."
@@ -124,8 +125,10 @@ The vanilla and fooks variants both run through the same selected runner with
 the same task prompt and isolated `CODEX_HOME` directories. The intended
 variant difference is that fooks runs `fooks init`/`fooks scan`/`fooks attach
 codex` before the same agent command, while vanilla does not. Reports include
-command hashes, modified file lists, cleanup status, parsed runtime tokens, and
-a conservative risk assessment.
+command hashes, modified file lists, cleanup status, parsed runtime tokens,
+captured patch artifacts, task-specific acceptance scores when available, and a
+conservative risk assessment. Use `--repeat N` to lower single-run variance and
+report medians for total-time and runtime-token deltas.
 
 ### Custom Configuration
 
@@ -190,8 +193,9 @@ benchmarks/frontend-harness/
 2. **Total Time**: Including fooks scan for baseline comparison
 3. **Token Reduction**: Estimated via fooks extract compression ratio
 4. **Codex Tokens Used**: Parsed from OMX/Codex output when available
-5. **Files Modified**: Number of files changed during task, plus file list
-6. **Success Rate**: Task completion without timeout/error
+5. **Artifact Quality**: Captured patch, diffstat, diff-check result, and task-specific acceptance score when available
+6. **Files Modified**: Number of files changed during task, plus file list
+7. **Success Rate**: Task completion without timeout/error
 
 ## Methodology
 
@@ -201,7 +205,8 @@ benchmarks/frontend-harness/
 4. Measure time, token compression, files modified
 5. Clean up worktrees
 6. Aggregate results across tasks/repos
-7. Attach risk levels for sample size, environment parity, cleanup,
+7. Report medians across repeated runs when `--repeat N` is used
+8. Attach risk levels for sample size, environment parity, cleanup,
    wall-clock noise, and runtime-token claims
 
 ### Key Insights
