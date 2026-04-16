@@ -211,11 +211,19 @@ benchmarks/frontend-harness/
 
 ### Key Insights
 
-1. **Token Efficiency**: Fooks compresses codebase context by ~78%, saving ~1.76M tokens per session
-2. **Speed**: Average 20.7% faster execution on typical tasks
-3. **Scalability**: Works effectively on large repos (cal.com: 1,691 TSX files, next.js: 28,000+ files)
-4. **Framework Coverage**: Tests span UI libraries, apps, and frameworks (React, Next.js, TailwindCSS)
-5. **Isolation**: Each benchmark uses isolated `.codex` folders per worktree
+1. **Proxy Compression vs Runtime Tokens**: Fooks can materially compress model-facing
+   file payloads, but direct Codex runtime tokens must be measured separately. Recent
+   Formbricks N=3 runs include cases where fooks used more runtime tokens than vanilla.
+2. **Speed Evidence Is Not Stable Yet**: Treat current wall-clock results as round-one
+   directional evidence, not a stable speed claim. Repeated direct-Codex Formbricks
+   runs showed mixed results and negative median total-time improvement.
+3. **Artifact Quality Matters**: Reports now preserve patches, diffstats, diff-check
+   output, and task-specific acceptance scores so token/time deltas are not cited when
+   the generated code regresses.
+4. **Framework Coverage Goal**: The harness targets UI libraries, apps, and frameworks
+   (React, Next.js, TailwindCSS), but each public claim should name the exact repo/task
+   mix behind it.
+5. **Isolation**: Each benchmark uses isolated `.codex` folders per worktree.
 
 ## Troubleshooting
 

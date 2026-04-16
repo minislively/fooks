@@ -285,7 +285,44 @@ def run_git(worktree_path, *args):
 def acceptance_score(task, files, patch_text):
     """Score task-specific output quality when the prompt is explicit enough."""
     prompt = task.get("prompt", "")
-    if "DeleteAccountModal/index.tsx" not in prompt:
+    lower_prompt = prompt.lower()
+    deleted_lines = [
+        line[1:]
+        for line in patch_text.splitlines()
+        if line.startswith("-") and not line.startswith("---")
+    ]
+
+    if "DeleteAccountModal/index.tsx" in prompt:
+        expected_file = "apps/web/modules/account/components/DeleteAccountModal/index.tsx"
+        checks = [
+            ("target_file_only", files == [expected_file]),
+            ("input_type_email", 'type="email"' in patch_text),
+            ("inline_red_error", "text-red-" in patch_text or "text-destructive" in patch_text),
+            ("invalid_email_state", "invalid" in patch_text.lower() or "malformed" in patch_text.lower()),
+            ("non_matching_email_state", "match" in patch_text.lower() or "user.email" in patch_text),
+            ("disabled_condition_updated", "disabled={" in patch_text and ("isDeleteDisabled" in patch_text or "deleting" in patch_text)),
+            ("submit_guard", "return" in patch_text and "deleteAccount" in patch_text),
+            ("aria_invalid", "aria-invalid" in patch_text),
+            ("aria_describedby", "aria-describedby" in patch_text),
+            ("existing_flow_preserved", "deleteUserAction" in patch_text and "signOutWithAudit" in patch_text),
+        ]
+    elif "login-form.tsx" in lower_prompt and "caps lock" in lower_prompt:
+        expected_file = "apps/web/modules/auth/login/components/login-form.tsx"
+        patch_lower = patch_text.lower()
+        deleted_text = "\n".join(deleted_lines)
+        checks = [
+            ("target_file_only", files == [expected_file]),
+            ("caps_lock_state", "capslock" in patch_lower and "useState" in patch_text),
+            ("get_modifier_state", "getModifierState" in patch_text and "CapsLock" in patch_text),
+            ("password_input_handlers", ("onKeyDown" in patch_text or "onKeyUp" in patch_text) and "getModifierState" in patch_text),
+            ("inline_warning_text", "Caps Lock" in patch_text or "caps lock" in patch_lower),
+            ("red_tailwind_warning", "text-red-" in patch_text or "text-destructive" in patch_text),
+            ("accessible_announcement", "aria-live" in patch_text or 'role="alert"' in patch_text),
+            ("password_flow_preserved", "PasswordInput" not in deleted_text and "form.formState.isSubmitting" not in deleted_text),
+            ("two_factor_flow_preserved", "totpLogin" not in deleted_text and "totpBackup" not in deleted_text and "TwoFactor" not in deleted_text),
+            ("email_signin_flow_preserved", "signIn" not in deleted_text and "createEmailTokenAction" not in deleted_text),
+        ]
+    else:
         return {
             "available": False,
             "score": None,
@@ -293,20 +330,6 @@ def acceptance_score(task, files, patch_text):
             "checks": [],
             "reason": "No task-specific scorer for this prompt.",
         }
-
-    expected_file = "apps/web/modules/account/components/DeleteAccountModal/index.tsx"
-    checks = [
-        ("target_file_only", files == [expected_file]),
-        ("input_type_email", 'type="email"' in patch_text),
-        ("inline_red_error", "text-red-" in patch_text or "text-destructive" in patch_text),
-        ("invalid_email_state", "invalid" in patch_text.lower() or "malformed" in patch_text.lower()),
-        ("non_matching_email_state", "match" in patch_text.lower() or "user.email" in patch_text),
-        ("disabled_condition_updated", "disabled={" in patch_text and ("isDeleteDisabled" in patch_text or "deleting" in patch_text)),
-        ("submit_guard", "return" in patch_text and "deleteAccount" in patch_text),
-        ("aria_invalid", "aria-invalid" in patch_text),
-        ("aria_describedby", "aria-describedby" in patch_text),
-        ("existing_flow_preserved", "deleteUserAction" in patch_text and "signOutWithAudit" in patch_text),
-    ]
 
     passed = sum(1 for _, ok in checks if ok)
     return {
