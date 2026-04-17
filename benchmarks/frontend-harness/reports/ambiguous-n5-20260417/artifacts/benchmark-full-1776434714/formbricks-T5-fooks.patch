@@ -1,0 +1,50 @@
+diff --git a/apps/web/modules/auth/login/components/login-form.tsx b/apps/web/modules/auth/login/components/login-form.tsx
+index ca7fe44..35b3949 100644
+--- a/apps/web/modules/auth/login/components/login-form.tsx
++++ b/apps/web/modules/auth/login/components/login-form.tsx
+@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
+ import { signIn } from "next-auth/react";
+ import Link from "next/link";
+ import { useRouter } from "next/navigation";
+-import { useEffect, useMemo, useRef, useState } from "react";
++import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+ import { FormProvider, SubmitHandler, useForm } from "react-hook-form";
+ import { toast } from "react-hot-toast";
+ import { useTranslation } from "react-i18next";
+@@ -147,6 +147,11 @@ export const LoginForm = ({
+   const [totpBackup, setTotpBackup] = useState(false);
+   const formRef = useRef<HTMLFormElement>(null);
+   const [lastLoggedInWith, setLastLoggedInWith] = useState("");
++  const [isCapsLockOn, setIsCapsLockOn] = useState(false);
++
++  const handlePasswordKeyEvent = (event: KeyboardEvent<HTMLInputElement>) => {
++    setIsCapsLockOn(event.getModifierState("CapsLock"));
++  };
+ 
+   useEffect(() => {
+     if (typeof window !== "undefined") {
+@@ -232,6 +237,12 @@ export const LoginForm = ({
+                             autoComplete="current-password"
+                             placeholder="*******"
+                             aria-placeholder="password"
++                            onKeyDown={handlePasswordKeyEvent}
++                            onKeyUp={handlePasswordKeyEvent}
++                            onBlur={() => {
++                              setIsCapsLockOn(false);
++                              field.onBlur();
++                            }}
+                             aria-label="password"
+                             aria-required="true"
+                             required
+@@ -239,6 +250,11 @@ export const LoginForm = ({
+                             value={field.value}
+                             onChange={(password) => field.onChange(password)}
+                           />
++                          {isCapsLockOn && (
++                            <p className="mt-1 text-left text-xs font-medium text-red-600" role="alert">
++                              {t("auth.login.caps_lock_warning", { defaultValue: "Caps Lock is on" })}
++                            </p>
++                          )}
+                           {error?.message && <FormError className="text-left">{error.message}</FormError>}
+                         </div>
+                       </FormControl>
