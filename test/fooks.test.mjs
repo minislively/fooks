@@ -16,6 +16,7 @@ const repoRoot = process.cwd();
 const cli = path.join(repoRoot, "dist", "cli", "index.js");
 const require = createRequire(import.meta.url);
 const { extractFile } = require(path.join(repoRoot, "dist", "core", "extract.js"));
+const { RAW_ORIGINAL_SIZE_THRESHOLD_BYTES } = require(path.join(repoRoot, "dist", "core", "decide.js"));
 const { toModelFacingPayload } = require(path.join(repoRoot, "dist", "core", "payload", "model-facing.js"));
 const { assessPayloadReadiness } = require(path.join(repoRoot, "dist", "core", "payload", "readiness.js"));
 const { decideCodexPreRead } = require(path.join(repoRoot, "dist", "adapters", "codex-pre-read.js"));
@@ -30,6 +31,7 @@ const { handleCodexRuntimeHook } = require(path.join(repoRoot, "dist", "adapters
 const { classifyPromptContext, discoverRelevantFilesByPolicy } = require(path.join(repoRoot, "dist", "core", "context-policy.js"));
 const { prepareExecutionContext } = require(path.join(repoRoot, "dist", "adapters", "codex.js"));
 const { handleCodexNativeHookPayload } = require(path.join(repoRoot, "dist", "adapters", "codex-native-hook.js"));
+const { detectRunner } = require(path.join(repoRoot, "dist", "cli", "run.js"));
 
 function run(args, cwd = repoRoot, envOverrides = {}) {
   return JSON.parse(execFileSync(process.execPath, [cli, ...args], { cwd, encoding: "utf8", env: { ...process.env, ...envOverrides } }));
@@ -109,6 +111,30 @@ function appendMarker(filePath, marker) {
   fs.writeFileSync(filePath, `${source.trimEnd()}\n${marker}\n`);
 }
 
+function withEnv(overrides, fn) {
+  const previous = new Map();
+  for (const [key, value] of Object.entries(overrides)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  try {
+    fn();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
 test("init creates config and cache contract", () => {
   const tempDir = makeTempProject();
   const result = run(["init"], tempDir);
@@ -125,6 +151,37 @@ test("init prefers FOOKS_TARGET_ACCOUNT for canonical config writes", () => {
   assert.ok(result.config.endsWith(path.join(".fooks", "config.json")));
   const config = JSON.parse(fs.readFileSync(path.join(tempDir, ".fooks", "config.json"), "utf8"));
   assert.equal(config.targetAccount, "minislively");
+});
+
+test("detectRunner prefers codex when auth.json is present", () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  fs.writeFileSync(path.join(codexHome, "auth.json"), "{}");
+  const emptyBin = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-empty-bin-"));
+
+  withEnv({ FOOKS_CODEX_HOME: codexHome, PATH: emptyBin }, () => {
+    assert.equal(detectRunner(), "codex");
+  });
+});
+
+test("detectRunner falls back to omx when codex auth is absent and omx is available", () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  const binDir = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-bin-"));
+  const omxPath = path.join(binDir, "omx");
+  fs.writeFileSync(omxPath, "#!/bin/sh\nexit 0\n");
+  fs.chmodSync(omxPath, 0o755);
+
+  withEnv({ FOOKS_CODEX_HOME: codexHome, PATH: binDir }, () => {
+    assert.equal(detectRunner(), "omx");
+  });
+});
+
+test("detectRunner keeps codex as the compatibility fallback when no runner signal exists", () => {
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  const emptyBin = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-empty-bin-"));
+
+  withEnv({ FOOKS_CODEX_HOME: codexHome, PATH: emptyBin }, () => {
+    assert.equal(detectRunner(), "codex");
+  });
 });
 
 test("extract keeps small fixture raw", () => {
@@ -276,6 +333,30 @@ test("codex pre-read falls back for larger raw files past the original-source th
   assert.equal(result.fallback.reason, "raw-mode");
 });
 
+test("codex pre-read keeps original payloads for small raw files below the validated floor", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-small-raw-"));
+  const rawPath = path.join(tempDir, "SmallRawButton.tsx");
+  const baseSource = fs.readFileSync(path.join(repoRoot, "fixtures", "raw", "SimpleButton.tsx"), "utf8").trimEnd();
+  let extracted;
+  for (let extraBytes = 1; extraBytes < 220; extraBytes += 1) {
+    fs.writeFileSync(rawPath, `${baseSource}\n/* ${"x".repeat(extraBytes)} */\n`);
+    extracted = extractFile(rawPath);
+    if (extracted.meta.rawSizeBytes > 200 && extracted.meta.rawSizeBytes < RAW_ORIGINAL_SIZE_THRESHOLD_BYTES) {
+      break;
+    }
+  }
+
+  assert.ok(extracted);
+  assert.equal(extracted.mode, "raw");
+  assert.ok(extracted.meta.rawSizeBytes > 200);
+  assert.ok(extracted.meta.rawSizeBytes < RAW_ORIGINAL_SIZE_THRESHOLD_BYTES);
+
+  const result = decideCodexPreRead(rawPath, tempDir);
+  assert.equal(result.decision, "payload");
+  assert.equal(result.payload.useOriginal, true);
+  assert.equal(result.payload.rawText, extracted.rawText);
+});
+
 test("cli codex-pre-read reuses the same decision seam and advertises the command", () => {
   const cliPayload = run(["codex-pre-read", "fixtures/compressed/FormSection.tsx"]);
   const directPayload = decideCodexPreRead(path.join(repoRoot, "fixtures", "compressed", "FormSection.tsx"), repoRoot);
@@ -378,8 +459,11 @@ test("prepareExecutionContext writes context policy metadata and resolves files 
 test("cli run keeps exact-file prompts to one light context file", () => {
   const tempDir = makeTempProject();
   const output = runText(["run", "Please", "update", "src/components/FormSection.tsx"], tempDir);
+  assert.match(output, /Shared Handoff Context/);
   assert.match(output, /Context mode: light/);
   assert.match(output, /1 files/);
+  assert.match(output, /preferred runtime \(codex, claude, omx, etc\.\)/);
+  assert.doesNotMatch(output, /Detected runner:/);
   const context = fs.readFileSync(path.join(tempDir, ".fooks", "temp-context.md"), "utf8");
   assert.match(context, /"contextMode":"light"/);
   assert.match(context, /## src\/components\/FormSection.tsx/);
@@ -966,6 +1050,28 @@ test("install codex-hooks normalizes bridge commands to the canonical fooks comm
   assert.equal(normalized.hooks.SessionStart[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
   assert.equal(normalized.hooks.UserPromptSubmit[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
   assert.equal(normalized.hooks.Stop[0].hooks[0].command, "fooks codex-runtime-hook --native-hook");
+});
+
+test("status cache reports empty for a fresh project before any scan", () => {
+  const tempDir = makeTempProject();
+  const status = run(["status", "cache"], tempDir);
+
+  assert.equal(status.status, "empty");
+  assert.equal(status.indexExists, false);
+  assert.equal(status.indexValid, false);
+  assert.equal(status.entryCount, 0);
+});
+
+test("status cache reports healthy after scan builds the cache index", () => {
+  const tempDir = makeTempProject();
+  const scan = run(["scan"], tempDir);
+  const status = run(["status", "cache"], tempDir);
+
+  assert.ok(scan.files.length > 0);
+  assert.equal(status.status, "healthy");
+  assert.equal(status.indexExists, true);
+  assert.equal(status.indexValid, true);
+  assert.ok(status.entryCount >= 5);
 });
 
 test("attach codex proves contract and runtime under minislively account context", () => {

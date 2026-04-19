@@ -12,6 +12,7 @@ import shutil
 import sys
 from pathlib import Path
 from datetime import datetime
+from statistics import median
 
 # Auto-detect paths
 SCRIPT_DIR = Path(__file__).parent.resolve()
@@ -20,6 +21,7 @@ FOOKS_DIR = BENCHMARK_DIR.parent.parent.resolve()  # fooks repo root
 DEFAULT_REPORTS_DIR = BENCHMARK_DIR / "reports"
 REPORT_SCHEMA_VERSION = "frontend-harness.v2-context-mode"
 CONTEXT_POLICY_VERSION = "context-policy.v1"
+RUNTIME_FILE_PREFIXES = (".codex/", ".fooks/", ".omx/", "node_modules/")
 
 # Test repos location (can be overridden via env var)
 REPOS_DIR = Path(os.environ.get("BENCHMARK_REPOS_DIR", Path.home() / "Workspace/fooks-test-repos"))
@@ -89,7 +91,7 @@ TASK_REPO_MAPPING = {
     "T1": ["shadcn-ui", "cal.com", "nextjs", "tailwindcss"],
     "T2": ["shadcn-ui", "cal.com", "nextjs", "tailwindcss"],
     "T3": ["shadcn-ui", "cal.com", "nextjs", "tailwindcss"],
-    "T4": ["shadcn-ui", "documenso", "nextjs"],
+    "T4": ["shadcn-ui", "cal.com", "documenso", "nextjs"],
     "T5": ["shadcn-ui", "cal.com", "nextjs", "tailwindcss"]
 }
 
@@ -110,7 +112,7 @@ ROUND1_NOTES = {
         "runner": "Selected with --runner; vanilla and fooks variants use the same runner.",
         "prompt": "Identical task text for vanilla and fooks variants.",
         "codexHome": "Each variant uses an isolated CODEX_HOME with auth.json and config.toml symlinked from the same host account.",
-        "variantDifference": "The fooks variant runs fooks init/scan/attach before the same agent command; vanilla does not.",
+        "variantDifference": "The fooks variant either runs fooks init/scan/attach before the same agent command or records an exact-file first-turn bypass when no fooks context would be injected; vanilla does not.",
     }
 }
 
@@ -135,13 +137,24 @@ def parse_args():
     )
     parser.add_argument("--task-prompt", help="Override the selected task prompt for one-off benchmark runs")
     parser.add_argument("--reports-dir", help="Override the directory used to save benchmark reports")
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=1,
+        help="Repeat a single task/repo case N times and aggregate quality-gated metrics.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print resolved configuration and exit")
     parser.add_argument("--list-cases", action="store_true", help="Print the selected task/repo cases and exit")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.iterations < 1:
+        parser.error("--iterations must be >= 1")
+    return args
 
 def resolve_test_cases(args):
     if bool(args.repo) != bool(args.task):
         raise SystemExit("--repo and --task must be provided together for a single-case run")
+    if args.iterations != 1 and not (args.repo and args.task):
+        raise SystemExit("--iterations > 1 requires a single-case --repo/--task run")
     if args.repo and args.task:
         return [(args.task, args.repo)]
     return DEFAULT_TEST_CASES
@@ -171,6 +184,7 @@ def classify_task_context(task):
             "promptSpecificity": "exact-file",
             "expectedContextPolicy": "light",
             "expectedFirstTurnRuntimeContext": "no-op",
+            "expectedFooksPrepare": "bypass",
         }
     if task.get("id") in {"T4", "T5"}:
         return {
@@ -178,12 +192,14 @@ def classify_task_context(task):
             "promptSpecificity": "ambiguous",
             "expectedContextPolicy": "auto",
             "expectedFirstTurnRuntimeContext": "auto",
+            "expectedFooksPrepare": "scan-attach",
         }
     return {
         "taskClass": "ambiguous-single-file",
         "promptSpecificity": "ambiguous",
         "expectedContextPolicy": "auto",
         "expectedFirstTurnRuntimeContext": "auto",
+        "expectedFooksPrepare": "scan-attach",
     }
 
 def variant_context_metadata(task, variant):
@@ -218,6 +234,286 @@ def variant_context_metadata(task, variant):
         "contextPolicyVersion": CONTEXT_POLICY_VERSION,
         "contextBudgetSource": "expected-policy",
     }
+
+def expected_fooks_prepare_strategy(task):
+    classification = classify_task_context(task)
+    return classification.get("expectedFooksPrepare", "scan-attach")
+
+
+def should_bypass_fooks_prepare(task):
+    return expected_fooks_prepare_strategy(task) == "bypass"
+
+
+def is_caps_lock_task(task):
+    prompt = task.get("prompt", "").lower()
+    return "caps lock" in prompt or "capslock" in prompt
+
+
+def check_patch_contains(patch_text, *patterns):
+    return any(re.search(pattern, patch_text, flags=re.IGNORECASE) for pattern in patterns)
+
+
+def evaluate_caps_lock_acceptance(files, patch_text, prompt):
+    locale_files = [f for f in files if f.startswith("apps/web/locales/") and f.endswith(".json")]
+    prompt_lower = prompt.lower()
+    locale_scope_requested = any(term in prompt_lower for term in ["all locale", "all translation", "all language", "translate"])
+    target_file = "apps/web/modules/auth/login/components/login-form.tsx"
+    checks = [
+        {
+            "name": "target_login_form_changed",
+            "passed": target_file in files,
+        },
+        {
+            "name": "caps_lock_state",
+            "passed": check_patch_contains(patch_text, r"isCapsLock", r"capsLock"),
+        },
+        {
+            "name": "get_modifier_state",
+            "passed": check_patch_contains(patch_text, r"getModifierState\([\"']CapsLock[\"']\)"),
+        },
+        {
+            "name": "password_input_handlers",
+            "passed": check_patch_contains(patch_text, r"onKeyDown") and check_patch_contains(patch_text, r"onKeyUp"),
+        },
+        {
+            "name": "inline_warning_text",
+            "passed": check_patch_contains(patch_text, r"caps_lock", r"Caps Lock is on"),
+        },
+        {
+            "name": "red_tailwind_warning",
+            "passed": check_patch_contains(patch_text, r"text-red-"),
+        },
+        {
+            "name": "accessible_announcement",
+            "passed": check_patch_contains(patch_text, r"role=\{?[\"'](?:alert|status)[\"']\}?", r"aria-live"),
+        },
+        {
+            "name": "locale_scope_capped",
+            "passed": locale_scope_requested or len(locale_files) <= 1,
+            "details": f"locale_files={len(locale_files)}",
+        },
+        {
+            "name": "file_scope_capped",
+            "passed": len(files) <= 2,
+            "details": f"files={len(files)}",
+        },
+    ]
+    score = sum(1 for check in checks if check["passed"])
+    return {
+        "available": True,
+        "kind": "caps-lock-login-warning",
+        "score": score,
+        "max_score": len(checks),
+        "passed": score == len(checks),
+        "checks": checks,
+    }
+
+
+def is_t4_component_extraction_task(task):
+    prompt = task.get("prompt", "").lower()
+    return (
+        task.get("id") == "T4"
+        or (
+            "component" in prompt
+            and "extract" in prompt
+            and "header" in prompt
+            and ("title" in prompt or "subtitle" in prompt or "actions" in prompt)
+        )
+    )
+
+
+def added_patch_lines(patch_text):
+    return "\n".join(
+        line[1:]
+        for line in patch_text.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    )
+
+
+def removed_patch_lines(patch_text):
+    return "\n".join(
+        line[1:]
+        for line in patch_text.splitlines()
+        if line.startswith("-") and not line.startswith("---")
+    )
+
+
+def source_files_only(files):
+    return [f for f in files if f and not is_runtime_path(f)]
+
+
+def header_like_files(files):
+    return [
+        f
+        for f in source_files_only(files)
+        if Path(f).suffix.lower() in {".tsx", ".jsx", ".ts", ".js"}
+        and re.search(
+            r"(^|[-_/])header(s)?(\.|[-_/])|[A-Z][A-Za-z0-9]*Header\.(tsx|jsx|ts|js)$",
+            f,
+            flags=re.IGNORECASE,
+        )
+    ]
+
+
+def build_acceptance_check(name, passed, details=None, mandatory=True):
+    check = {"name": name, "passed": bool(passed), "mandatory": mandatory}
+    if details is not None:
+        check["details"] = details
+    return check
+
+
+def evaluate_component_extraction_acceptance(files, patch_text, diff_check=None):
+    """Heuristic scorer for T4 header component extraction artifacts.
+
+    This intentionally scores only the benchmark artifact shape, not arbitrary
+    React correctness. Mandatory checks block benchmark claims; advisory checks
+    add review signal without making style-only weaknesses fail the task.
+    """
+    changed_source_files = source_files_only(files)
+    added = added_patch_lines(patch_text)
+    removed = removed_patch_lines(patch_text)
+    header_files = header_like_files(changed_source_files)
+    non_header_source_files = [f for f in changed_source_files if f not in header_files]
+
+    header_component_declared = check_patch_contains(
+        added,
+        r"(?:function|const|export\s+(?:function|const))\s+[A-Z][A-Za-z0-9]*Header\b",
+        r"\bHeader\s*[:=]\s*\(",
+        r"\b[A-Z][A-Za-z0-9]*HeaderProps\b",
+    )
+    header_component_created = bool(header_files) or header_component_declared
+
+    original_uses_header = bool(non_header_source_files) and any(
+        re.search(pattern, added)
+        for pattern in (
+            r"import\s+.*Header.*from\s+[\"'][./@]",
+            r"<[A-Z][A-Za-z0-9]*Header\b",
+            r"<Header\b",
+        )
+    )
+
+    has_title_signal = check_patch_contains(
+        added,
+        r"\btitle\b",
+        r"<h[1-3]\b",
+        r"heading",
+    )
+    has_subtitle_signal = check_patch_contains(
+        added,
+        r"\bsubtitle\b",
+        r"\bdescription\b",
+        r"<p\b",
+    )
+    removed_header_semantics = check_patch_contains(
+        removed,
+        r"<h[1-3]\b",
+        r"\btitle\b",
+        r"\bsubtitle\b",
+        r"\bdescription\b",
+    )
+    header_semantics_preserved = has_title_signal and (has_subtitle_signal or not removed_header_semantics)
+
+    action_removed = check_patch_contains(
+        removed,
+        r"<(?:button|Button|a)\b",
+        r"\bactions?\b",
+        r"\bchildren\b",
+    )
+    action_preserved = check_patch_contains(
+        added,
+        r"\bactions?\b",
+        r"\bchildren\b",
+        r"<(?:button|Button|a)\b",
+        r"href=",
+    )
+    header_actions_preserved = action_preserved or not action_removed
+
+    broad_scope_roots = {
+        f.split("/", 1)[0]
+        for f in changed_source_files
+        if "/" in f
+    }
+    file_scope_capped = len(changed_source_files) <= 4 and len(broad_scope_roots) <= 2
+    runtime_files_excluded = len(changed_source_files) == len(files)
+    if diff_check is None:
+        diff_check_passed = True
+        diff_details = "diff_check not supplied to standalone scorer"
+    else:
+        diff_check_passed = bool(diff_check.get("success"))
+        diff_details = (diff_check.get("stderr") or diff_check.get("stdout") or "ok")[:300]
+
+    checks = [
+        build_acceptance_check(
+            "header_component_created_or_extracted",
+            header_component_created,
+            f"header_files={header_files}, header_component_declared={header_component_declared}",
+        ),
+        build_acceptance_check(
+            "original_component_uses_header",
+            original_uses_header,
+            f"non_header_source_files={non_header_source_files}",
+        ),
+        build_acceptance_check(
+            "header_semantics_preserved",
+            header_semantics_preserved,
+            f"title_signal={has_title_signal}, subtitle_signal={has_subtitle_signal}, removed_semantics={removed_header_semantics}",
+        ),
+        build_acceptance_check(
+            "header_actions_preserved",
+            header_actions_preserved,
+            f"action_removed={action_removed}, action_preserved={action_preserved}",
+        ),
+        build_acceptance_check(
+            "no_unused_header_false_positive",
+            header_component_created and original_uses_header,
+        ),
+        build_acceptance_check(
+            "file_scope_capped",
+            file_scope_capped,
+            f"source_files={len(changed_source_files)}, roots={sorted(broad_scope_roots)}",
+        ),
+        build_acceptance_check(
+            "runtime_files_excluded",
+            runtime_files_excluded,
+            f"files={len(files)}, source_files={len(changed_source_files)}",
+        ),
+        build_acceptance_check("diff_check_passed", diff_check_passed, diff_details),
+        build_acceptance_check(
+            "style_continuity_present",
+            check_patch_contains(added, r"className=", r"cn\(", r"twMerge", r"tailwind"),
+            mandatory=False,
+        ),
+        build_acceptance_check(
+            "props_are_reasonably_named",
+            check_patch_contains(added, r"\btitle\b", r"\bsubtitle\b", r"\bactions\b", r"\bchildren\b"),
+            mandatory=False,
+        ),
+        build_acceptance_check(
+            "new_file_location_matches_local_pattern",
+            bool(header_files) and all("/" in f for f in header_files),
+            details=f"header_files={header_files}",
+            mandatory=False,
+        ),
+    ]
+    score = sum(1 for check in checks if check["passed"])
+    mandatory_passed = all(check["passed"] for check in checks if check.get("mandatory", True))
+    return {
+        "available": True,
+        "kind": "component-extraction",
+        "score": score,
+        "max_score": len(checks),
+        "passed": mandatory_passed,
+        "checks": checks,
+    }
+
+
+def evaluate_acceptance(task, files, patch_text, diff_check=None):
+    if is_caps_lock_task(task):
+        return evaluate_caps_lock_acceptance(files, patch_text, task.get("prompt", ""))
+    if is_t4_component_extraction_task(task):
+        return evaluate_component_extraction_acceptance(files, patch_text, diff_check)
+    return {"available": False, "reason": "no scorer for task prompt"}
+
 
 def get_session_token_estimate(repo_path):
     """Estimate session-level token savings"""
@@ -327,26 +623,33 @@ def remove_worktree(worktree, repo_path):
 
     return status
 
-def changed_files(worktree_path):
-    files_result = subprocess.run(
-        ["git", "diff", "--name-only"], cwd=worktree_path,
-        capture_output=True, text=True
-    )
-    return [f for f in files_result.stdout.strip().split('\n') if f]
+def is_runtime_path(file_path):
+    return file_path.startswith(RUNTIME_FILE_PREFIXES)
 
-def mark_untracked_intent(worktree_path):
-    """Make safe untracked source files visible to git diff without staging contents."""
+
+def untracked_source_files(worktree_path):
     result = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],
         cwd=worktree_path,
         capture_output=True,
         text=True,
     )
-    candidates = [
-        f
-        for f in result.stdout.splitlines()
-        if f and not f.startswith((".codex/", ".fooks/", ".omx/", "node_modules/"))
-    ]
+    return [f for f in result.stdout.splitlines() if f and not is_runtime_path(f)]
+
+
+def changed_files(worktree_path):
+    files_result = subprocess.run(
+        ["git", "diff", "--name-only", "--", ".", ":(exclude).codex", ":(exclude).fooks", ":(exclude).omx"],
+        cwd=worktree_path,
+        capture_output=True,
+        text=True
+    )
+    files = [f for f in files_result.stdout.strip().split('\n') if f]
+    return sorted(set(files + untracked_source_files(worktree_path)))
+
+def mark_untracked_intent(worktree_path):
+    """Make safe untracked source files visible to git diff without staging contents."""
+    candidates = untracked_source_files(worktree_path)
     if candidates:
         subprocess.run(["git", "add", "-N", "--", *candidates], cwd=worktree_path, capture_output=True, text=True)
 
@@ -377,6 +680,17 @@ def capture_artifact(worktree_path, artifact_dir, stem):
             "stderr": output_tail(diff_check.stderr, 1000),
         },
     }
+
+def capture_artifact_with_acceptance(worktree_path, artifact_dir, stem, task, files):
+    artifact = capture_artifact(worktree_path, artifact_dir, stem)
+    patch_text = ""
+    try:
+        patch_text = Path(artifact["patch_path"]).read_text()
+    except Exception:
+        patch_text = ""
+    artifact["acceptance"] = evaluate_acceptance(task, files, patch_text, artifact.get("diff_check"))
+    return artifact
+
 
 def detect_package_manager(worktree_path):
     """Detect package manager (npm, pnpm, yarn) based on lock files"""
@@ -548,10 +862,16 @@ def output_tail(value, limit=2000):
 def parse_tokens_used(output):
     if not output:
         return None
-    match = re.search(r"tokens used\s*\n\s*([0-9,]+)", output, flags=re.IGNORECASE)
-    if not match:
-        return None
-    return int(match.group(1).replace(",", ""))
+    patterns = [
+        r"tokens used\s*[:=]?\s*\n\s*([0-9,]+)",
+        r"tokens used\s*[:=]\s*([0-9,]+)",
+        r"\b([0-9,]+)\s+tokens used\b",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, output, flags=re.IGNORECASE)
+        if match:
+            return int(match.group(1).replace(",", ""))
+    return None
 
 def agent_prompt(task):
     return f"Task: {task['name']}\n{task['prompt']}"
@@ -679,6 +999,19 @@ def assess_benchmark_risks(results):
         r for r in successful_pairs
         if actual_tokens_available and r["fooks"]["tokens_used"] > r["vanilla"]["tokens_used"]
     ]
+    acceptance_available = any(
+        r.get("fooks", {}).get("artifact", {}).get("acceptance", {}).get("available")
+        for r in successful_pairs
+    )
+    fooks_acceptance_failures = [
+        r for r in successful_pairs
+        if r.get("fooks", {}).get("artifact", {}).get("acceptance", {}).get("available")
+        and not r.get("fooks", {}).get("artifact", {}).get("acceptance", {}).get("passed")
+    ]
+    scope_regressions = [
+        r for r in successful_pairs
+        if len(r.get("fooks", {}).get("files_list", [])) > max(2, len(r.get("vanilla", {}).get("files_list", [])) + 1)
+    ]
 
     risks = [
         {
@@ -691,7 +1024,7 @@ def assess_benchmark_risks(results):
             "name": "environment_parity",
             "level": "low" if same_prompt and same_files and same_runner else "medium",
             "evidence": f"same_prompt={same_prompt}, same_files={same_files}, same_runner={same_runner}, runner={','.join(runner_names)}",
-            "interpretation": "Both variants use the same selected runner with isolated CODEX_HOME; fooks additionally prepares native fooks context.",
+            "interpretation": "Both variants use the same selected runner with isolated CODEX_HOME; fooks may prepare native context or explicitly bypass exact-file first-turn preparation.",
         },
         {
             "name": "orchestration_overhead",
@@ -710,6 +1043,14 @@ def assess_benchmark_risks(results):
             "level": "medium" if len(successful_pairs) == 1 else "low",
             "evidence": "Single-run wall-clock timing includes model/service variability.",
             "interpretation": "Prefer median and p95 over repeated identical tasks.",
+        },
+        {
+            "name": "artifact_quality_scope",
+            "level": "high" if fooks_acceptance_failures or scope_regressions else "low" if acceptance_available else "medium",
+            "evidence": (
+                f"acceptance_available={acceptance_available}, fooks_acceptance_failures={len(fooks_acceptance_failures)}, scope_regressions={len(scope_regressions)}"
+            ),
+            "interpretation": "Do not cite wins unless fooks passes task acceptance and avoids broader edit scope than vanilla.",
         },
         {
             "name": "runtime_token_claim",
@@ -734,6 +1075,223 @@ def assess_benchmark_risks(results):
         },
         "risks": risks,
     }
+
+
+def pct_improvement(baseline, candidate):
+    if baseline in (None, 0) or candidate is None:
+        return None
+    return (baseline - candidate) / baseline * 100
+
+
+def median_or_none(values):
+    clean = [value for value in values if value is not None]
+    if not clean:
+        return None
+    return median(clean)
+
+
+def acceptance_passed(result, variant):
+    acceptance = result.get(variant, {}).get("artifact", {}).get("acceptance", {})
+    return bool(acceptance.get("available") and acceptance.get("passed"))
+
+
+def acceptance_available(result, variant):
+    acceptance = result.get(variant, {}).get("artifact", {}).get("acceptance", {})
+    return bool(acceptance.get("available"))
+
+
+def target_signature(files):
+    source_files = source_files_only(files)
+    header_files = header_like_files(source_files)
+    if header_files:
+        return sorted(header_files)
+    return sorted(source_files)
+
+
+def classify_target_comparability(result):
+    vanilla_files = result.get("vanilla", {}).get("files_list", [])
+    fooks_files = result.get("fooks", {}).get("files_list", [])
+    if vanilla_files and sorted(vanilla_files) == sorted(fooks_files):
+        return {
+            "classification": "same_component_or_file",
+            "reason": "Both variants changed the same file set.",
+        }
+    vanilla_signature = target_signature(vanilla_files)
+    fooks_signature = target_signature(fooks_files)
+    if vanilla_signature and fooks_signature and set(vanilla_signature).intersection(fooks_signature):
+        return {
+            "classification": "same_component_or_file",
+            "reason": "Both variants share at least one extracted/header target.",
+        }
+    if (
+        result.get("task") == "T4"
+        and acceptance_available(result, "vanilla")
+        and acceptance_available(result, "fooks")
+        and vanilla_signature
+        and fooks_signature
+    ):
+        return {
+            "classification": "semantically_comparable_target",
+            "reason": "Both variants produced T4-scored header extraction artifacts, but chose different targets.",
+        }
+    return {
+        "classification": "incomparable_target",
+        "reason": "The variants did not produce comparable changed targets.",
+    }
+
+
+def is_successful_pair(result):
+    return bool(result.get("vanilla", {}).get("success") and result.get("fooks", {}).get("success"))
+
+
+def has_broader_scope_regression(result):
+    vanilla_files = len(result.get("vanilla", {}).get("files_list", []))
+    fooks_files = len(result.get("fooks", {}).get("files_list", []))
+    return fooks_files > max(2, vanilla_files + 1)
+
+
+def is_quality_gated_pair(result):
+    comparability = result.get("targetComparability", {}).get("classification")
+    return (
+        is_successful_pair(result)
+        and comparability in {"same_component_or_file", "semantically_comparable_target"}
+        and acceptance_passed(result, "vanilla")
+        and acceptance_passed(result, "fooks")
+        and not has_broader_scope_regression(result)
+    )
+
+
+def runtime_token_reduction(result):
+    vanilla_tokens = result.get("vanilla", {}).get("tokens_used")
+    fooks_tokens = result.get("fooks", {}).get("tokens_used")
+    return pct_improvement(vanilla_tokens, fooks_tokens)
+
+
+def stage_verdict(iterations, aggregate):
+    reasons = []
+    if iterations <= 1:
+        if aggregate["qualityGatedPairCount"] >= 1:
+            return "smoke-pass-proceed-to-n3", ["N=1 only validates candidate/scorer stability; no product win/loss claim."]
+        if aggregate["targetComparabilityBreakdown"].get("incomparable_target", 0):
+            return "prompt-redesign-needed", ["N=1 produced incomparable targets."]
+        if aggregate["fooksAcceptancePassRate"] is not None and aggregate["fooksAcceptancePassRate"] < 1:
+            return "scorer-redesign-needed", ["N=1 fooks artifact did not pass the T4 scorer."]
+        return "candidate-invalid", ["N=1 did not produce a quality-gated pair."]
+
+    if iterations < 5:
+        if aggregate["qualityGatedPairCount"] == 0:
+            return "inconclusive-candidate-redesign", ["N=3 has no quality-gated pairs."]
+        if aggregate["fooksAcceptancePassRate"] is not None and aggregate["fooksAcceptancePassRate"] < 1:
+            return "provisional-loss-or-non-goal", ["N=3 fooks acceptance is below the level needed to justify N=5."]
+        if (
+            aggregate["qualityGatedMedianTotalTimeImprovement"] is not None
+            and aggregate["qualityGatedMedianTotalTimeImprovement"] <= 0
+        ):
+            return "provisional-loss-or-non-goal", ["N=3 quality-gated total time does not improve."]
+        if (
+            aggregate["runtimeTokenClaimAvailable"]
+            and aggregate["qualityGatedMedianRuntimeTokenReduction"] is not None
+            and aggregate["qualityGatedMedianRuntimeTokenReduction"] <= 0
+        ):
+            return "provisional-loss-or-non-goal", ["N=3 quality-gated runtime tokens do not improve."]
+        return "proceed-to-n5", ["N=3 is promising but cannot produce a claimable win because the threshold requires 4/5."]
+
+    if aggregate["fooksAcceptancePassRate"] is None or aggregate["fooksAcceptancePassRate"] < 0.8:
+        reasons.append("fooks acceptance pass rate is below 4/5.")
+    if aggregate["broaderScopeRegressionCount"] != 0:
+        reasons.append("broader scope regressions were observed.")
+    if (
+        aggregate["qualityGatedMedianTotalTimeImprovement"] is None
+        or aggregate["qualityGatedMedianTotalTimeImprovement"] <= 0
+    ):
+        reasons.append("quality-gated median total time does not improve.")
+    if not aggregate["runtimeTokenClaimAvailable"]:
+        reasons.append("actual runtime tokens are missing for at least one quality-gated pair.")
+    elif (
+        aggregate["qualityGatedMedianRuntimeTokenReduction"] is None
+        or aggregate["qualityGatedMedianRuntimeTokenReduction"] <= 0
+    ):
+        reasons.append("quality-gated median runtime tokens do not improve.")
+    if aggregate["severeTokenOutlierCount"] != 0:
+        reasons.append("severe fooks runtime-token outliers were observed.")
+    if reasons:
+        return "loss-non-goal-or-inconclusive", reasons
+    return "claimable-win", ["N=5 satisfies quality, scope, total-time, runtime-token, and outlier gates."]
+
+
+def aggregate_quality_gated_results(results, iterations):
+    for result in results:
+        if "targetComparability" not in result:
+            result["targetComparability"] = classify_target_comparability(result)
+
+    successful_pairs = [result for result in results if is_successful_pair(result)]
+
+    fooks_artifact_results = [
+        result for result in results
+        if result.get("fooks", {}).get("success") and acceptance_available(result, "fooks")
+    ]
+    fooks_acceptance_denominator = len(fooks_artifact_results)
+    fooks_acceptance_passes = sum(1 for result in fooks_artifact_results if acceptance_passed(result, "fooks"))
+    quality_pairs = [result for result in successful_pairs if is_quality_gated_pair(result)]
+
+    raw_total_improvements = [
+        pct_improvement(result.get("vanilla", {}).get("duration_ms"), result.get("fooks", {}).get("total_time"))
+        for result in successful_pairs
+    ]
+    raw_runtime_token_reductions = [runtime_token_reduction(result) for result in successful_pairs]
+    quality_total_improvements = [
+        pct_improvement(result.get("vanilla", {}).get("duration_ms"), result.get("fooks", {}).get("total_time"))
+        for result in quality_pairs
+    ]
+    quality_token_pairs = [
+        result
+        for result in quality_pairs
+        if result.get("vanilla", {}).get("tokens_used") is not None and result.get("fooks", {}).get("tokens_used") is not None
+    ]
+    runtime_claim_available = len(quality_pairs) > 0 and len(quality_token_pairs) == len(quality_pairs)
+    quality_runtime_token_reductions = (
+        [runtime_token_reduction(result) for result in quality_token_pairs]
+        if runtime_claim_available
+        else []
+    )
+
+    comparability_breakdown = {
+        "same_component_or_file": 0,
+        "semantically_comparable_target": 0,
+        "incomparable_target": 0,
+    }
+    for result in results:
+        classification = result.get("targetComparability", {}).get("classification", "incomparable_target")
+        comparability_breakdown[classification] = comparability_breakdown.get(classification, 0) + 1
+
+    severe_token_outliers = [
+        result for result in successful_pairs
+        if result.get("vanilla", {}).get("tokens_used") is not None
+        and result.get("fooks", {}).get("tokens_used") is not None
+        and result["fooks"]["tokens_used"] > result["vanilla"]["tokens_used"] * 1.2
+    ]
+
+    aggregate = {
+        "rawMedianTotalTimeImprovement": median_or_none(raw_total_improvements),
+        "rawMedianRuntimeTokenReduction": median_or_none(raw_runtime_token_reductions),
+        "qualityGatedPairCount": len(quality_pairs),
+        "qualityGatedMedianTotalTimeImprovement": median_or_none(quality_total_improvements),
+        "qualityGatedMedianRuntimeTokenReduction": median_or_none(quality_runtime_token_reductions),
+        "runtimeTokenClaimAvailable": runtime_claim_available,
+        "fooksAcceptancePassRate": (
+            fooks_acceptance_passes / fooks_acceptance_denominator
+            if fooks_acceptance_denominator
+            else None
+        ),
+        "broaderScopeRegressionCount": sum(1 for result in successful_pairs if has_broader_scope_regression(result)),
+        "severeTokenOutlierCount": len(severe_token_outliers),
+        "targetComparabilityBreakdown": comparability_breakdown,
+        "proxyContextReductionLabel": "proxyContextReduction; context-size evidence only, not runtime token savings",
+    }
+    verdict, verdict_reasons = stage_verdict(iterations, aggregate)
+    aggregate["verdict"] = verdict
+    aggregate["verdictReasons"] = verdict_reasons
+    return aggregate
 
 def run_vanilla_agent(worktree, task, runner):
     """Run vanilla agent runner"""
@@ -773,7 +1331,17 @@ def run_vanilla_agent(worktree, task, runner):
 
 def run_fooks_agent(worktree, task, runner):
     """Run fooks-prepared agent runner"""
-    prepare = fooks_prepare(worktree, runner)
+    if should_bypass_fooks_prepare(task):
+        prepare = {
+            "success": True,
+            "duration_ms": 0,
+            "steps": [],
+            "error": None,
+            "bypassed": True,
+            "reason": "exact-file-first-turn-no-context",
+        }
+    else:
+        prepare = fooks_prepare(worktree, runner)
     fooks_scan_time = prepare["duration_ms"]
     if not prepare["success"]:
         return {
@@ -829,7 +1397,13 @@ def run_fooks_agent(worktree, task, runner):
                 "scan_time": fooks_scan_time, "total_time": fooks_scan_time + int((time.time() - start) * 1000),
                 "files": 0, "files_list": [], "error": str(e)}
 
-def run_benchmark(task, repo_name, runner, artifact_dir):
+def artifact_stem(repo_name, task_id, variant, iteration=None):
+    if iteration is None:
+        return f"{repo_name}-{task_id}-{variant}"
+    return f"{repo_name}-{task_id}-iter{iteration}-{variant}"
+
+
+def run_benchmark(task, repo_name, runner, artifact_dir, iteration=None):
     """Run full benchmark for one task on one repo"""
     print(f"\n{'='*70}")
     print(f"[{task['id']}] {task['name']} ({task['difficulty']})")
@@ -843,11 +1417,13 @@ def run_benchmark(task, repo_name, runner, artifact_dir):
     classification = classify_task_context(task)
     results = {"task": task['id'], "task_name": task['name'], "repo": repo_name,
                "difficulty": task['difficulty'], "timestamp": datetime.now().isoformat(),
+               "iteration": iteration,
                "repoClass": "external-oss-nextjs-tailwind" if repo_name in {"formbricks", "cal.com", "shadcn-ui", "documenso", "nextjs"} else "external-oss-frontend",
                "taskClass": classification["taskClass"],
                "promptSpecificity": classification["promptSpecificity"],
                "expectedContextPolicy": classification["expectedContextPolicy"],
-               "expectedFirstTurnRuntimeContext": classification.get("expectedFirstTurnRuntimeContext", classification["expectedContextPolicy"])}
+               "expectedFirstTurnRuntimeContext": classification.get("expectedFirstTurnRuntimeContext", classification["expectedContextPolicy"]),
+               "expectedFooksPrepare": classification.get("expectedFooksPrepare", "scan-attach")}
 
     # Token estimate (once per repo)
     print("  Calculating token estimates...")
@@ -862,7 +1438,13 @@ def run_benchmark(task, repo_name, runner, artifact_dir):
     print("\n  [VANILLA] Running...")
     wt_v = create_worktree(repo_path, task['id'], "vanilla")
     res_v = run_vanilla_agent(wt_v, task, runner)
-    res_v["artifact"] = capture_artifact(wt_v["path"], artifact_dir, f"{repo_name}-{task['id']}-vanilla")
+    res_v["artifact"] = capture_artifact_with_acceptance(
+        wt_v["path"],
+        artifact_dir,
+        artifact_stem(repo_name, task["id"], "vanilla", iteration),
+        task,
+        res_v.get("files_list", []),
+    )
     res_v["cleanup"] = remove_worktree(wt_v, repo_path)
     results["vanilla"] = res_v
     print(f"    {'✓' if res_v['success'] else '✗'} {res_v['duration_ms']:,}ms, {res_v['files']} files")
@@ -875,7 +1457,13 @@ def run_benchmark(task, repo_name, runner, artifact_dir):
     print("\n  [FOOKS] Running...")
     wt_f = create_worktree(repo_path, task['id'], "fooks")
     res_f = run_fooks_agent(wt_f, task, runner)
-    res_f["artifact"] = capture_artifact(wt_f["path"], artifact_dir, f"{repo_name}-{task['id']}-fooks")
+    res_f["artifact"] = capture_artifact_with_acceptance(
+        wt_f["path"],
+        artifact_dir,
+        artifact_stem(repo_name, task["id"], "fooks", iteration),
+        task,
+        res_f.get("files_list", []),
+    )
     res_f["cleanup"] = remove_worktree(wt_f, repo_path)
     results["fooks"] = res_f
     print(f"    {'✓' if res_f['success'] else '✗'} exec:{res_f['duration_ms']:,}ms + scan:{res_f['scan_time']:,}ms = {res_f['total_time']:,}ms, {res_f['files']} files")
@@ -891,8 +1479,10 @@ def run_benchmark(task, repo_name, runner, artifact_dir):
         total_improvement = 0
 
     results["improvement"] = {"exec": exec_improvement, "total": total_improvement}
+    results["targetComparability"] = classify_target_comparability(results)
     print(f"\n  Execution time diff: {exec_improvement:+.1f}%")
     print(f"  Total time diff: {total_improvement:+.1f}%")
+    print(f"  Target comparability: {results['targetComparability']['classification']}")
 
     return results
 
@@ -917,6 +1507,8 @@ def main():
                 "promptSpecificity": classification["promptSpecificity"],
                 "expectedContextPolicy": classification["expectedContextPolicy"],
                 "expectedFirstTurnRuntimeContext": classification.get("expectedFirstTurnRuntimeContext", classification["expectedContextPolicy"]),
+                "expectedFooksPrepare": classification.get("expectedFooksPrepare", "scan-attach"),
+                "taskRepoMappingIncludesRepo": repo_name in TASK_REPO_MAPPING.get(task["id"], []),
             })
         print(json.dumps({
             "reportSchemaVersion": REPORT_SCHEMA_VERSION,
@@ -925,6 +1517,7 @@ def main():
             "reposDir": str(REPOS_DIR),
             "runner": args.runner,
             "runnerLabel": runner_label(args.runner),
+            "iterations": args.iterations,
             "selectedCases": resolved_tasks,
             "availableRepos": sorted(REPOS.keys()),
             "availableTasks": sorted(build_task_index().keys()),
@@ -939,6 +1532,7 @@ def main():
     print(f"Tasks: {', '.join(sorted(build_task_index().keys()))}")
     print(f"Repos: {', '.join(sorted(REPOS.keys()))}")
     print(f"Runner: {runner_label(args.runner)}")
+    print(f"Iterations: {args.iterations}")
     print(f"Variants: Vanilla vs Fooks (with token estimates)")
     print(f"Reports dir: {reports_dir}")
     print("="*70)
@@ -948,20 +1542,33 @@ def main():
     artifact_dir = reports_dir / "artifacts" / f"benchmark-full-{report_timestamp}"
 
     for task_id, repo_name in test_cases:
-        task = resolve_task(task_id, args.task_prompt if (args.repo and args.task == task_id) else None)
+        for iteration in range(1, args.iterations + 1):
+            task = resolve_task(task_id, args.task_prompt if (args.repo and args.task == task_id) else None)
+            iteration_label = f" iteration {iteration}/{args.iterations}" if args.iterations > 1 else ""
+            if iteration_label:
+                print(f"\n---{iteration_label} ---")
 
-        try:
-            result = run_benchmark(task, repo_name, args.runner, artifact_dir)
-            all_results.append(result)
-        except Exception as e:
-            print(f"\n  ✗ Benchmark failed: {e}")
-            all_results.append({
-                "task": task_id, "repo": repo_name, "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            })
+            try:
+                result = run_benchmark(
+                    task,
+                    repo_name,
+                    args.runner,
+                    artifact_dir,
+                    iteration if args.iterations > 1 else None,
+                )
+                all_results.append(result)
+            except Exception as e:
+                print(f"\n  ✗ Benchmark failed: {e}")
+                all_results.append({
+                    "task": task_id,
+                    "repo": repo_name,
+                    "iteration": iteration if args.iterations > 1 else None,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                })
 
-        # Cool down between tests
-        time.sleep(5)
+            # Cool down between tests
+            time.sleep(5)
 
     # Generate final report
     print("\n" + "="*70)
@@ -995,6 +1602,8 @@ def main():
     print(f"\nAvg token reduction: {avg_reduction:.1f}%")
     print(f"Avg tokens saved: ~{avg_saved:,.0f} per session")
 
+    quality_gated_decision = aggregate_quality_gated_results(all_results, args.iterations)
+
     # Save report
     report_path = reports_dir / f"benchmark-full-{report_timestamp}.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1003,12 +1612,19 @@ def main():
             "reportSchemaVersion": REPORT_SCHEMA_VERSION,
             "timestamp": datetime.now().isoformat(),
             "artifactDir": str(artifact_dir),
+            "iterations": args.iterations,
+            "qualityGatedDecision": quality_gated_decision,
             "summary": {
                 "total_benchmarks": len(all_results),
                 "vanilla_success": len(vanilla_success),
                 "fooks_success": len(fooks_success),
                 "avg_token_reduction": avg_reduction,
-                "avg_tokens_saved": avg_saved
+                "avg_tokens_saved": avg_saved,
+                "proxyContextReduction": {
+                    "avg_reduction_pct": avg_reduction,
+                    "avg_tokens_saved": avg_saved,
+                    "label": "proxyContextReduction; context-size evidence only, not runtime token savings",
+                },
             },
             "notes": ROUND1_NOTES,
             "riskAssessment": assess_benchmark_risks(all_results),

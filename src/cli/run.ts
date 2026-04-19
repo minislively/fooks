@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { scanProject } from "../core/scan.js";
 import { extractFile } from "../core/extract.js";
 import { decideMode } from "../core/decide.js";
@@ -65,17 +69,16 @@ export async function runTask(options: RunOptions): Promise<RunResult> {
     
     // 4. Prepare execution context (handoff pattern)
     const runner = (options.runner === "auto" || !options.runner) ? detectRunner() : options.runner;
-    console.log("Detected runner:", runner);
-    
+
     let executionContext;
     if (runner === "codex" || runner === "omx") {
       executionContext = await prepareExecutionContext(options.prompt, processedFiles, cwd, selection.policy);
-      console.log("\n=== Handoff Summary ===");
+      console.log("\n=== Shared Handoff Context ===");
       console.log(`Context ready: ${executionContext.contextPath}`);
       console.log(`Files: ${executionContext.fileCount}, Size: ${(executionContext.totalSize / 1024).toFixed(1)}KB`);
       console.log(`Context mode: ${executionContext.contextMode} (${executionContext.contextModeReason})`);
       console.log(`Prompt: "${executionContext.prompt}"`);
-      console.log(`\nNext: Execute with your preferred runtime (omx, codex, claude, etc.)`);
+      console.log(`\nNext: Open this context with your preferred runtime (codex, claude, omx, etc.)`);
       console.log(`Context file: ${executionContext.contextPath}`);
       console.log("======================\n");
     }
@@ -130,13 +133,33 @@ async function tryExtract(filePath: string, mode: "raw" | "hybrid" | "compressed
   }
 }
 
-function detectRunner(): "codex" | "omx" {
-  // TODO: Detect based on availability
+function codexHome(): string {
+  return process.env.FOOKS_CODEX_HOME || path.join(os.homedir(), ".codex");
+}
+
+function hasCodexAuth(): boolean {
+  return fs.existsSync(path.join(codexHome(), "auth.json"));
+}
+
+function commandExists(command: string): boolean {
+  const result = spawnSync(command, ["--version"], { stdio: "ignore" });
+  return !result.error;
+}
+
+export function detectRunner(): "codex" | "omx" {
+  if (hasCodexAuth()) {
+    return "codex";
+  }
+
+  if (commandExists("omx")) {
+    return "omx";
+  }
+
   return "codex";
 }
 
 // CLI entry - run if executed directly
-const isDirectExecution = process.argv[1]?.includes("run");
+const isDirectExecution = process.argv[1]?.endsWith("run.js");
 if (isDirectExecution) {
   const prompt = process.argv[2];
   if (!prompt) {

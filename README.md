@@ -3,6 +3,10 @@
 Product / package / primary CLI name: `fooks`
 Local frontend-only context compression engine for React/TSX files.
 
+## Validation
+
+- Agent-neutral terminal CLI validation on current `main` (2026-04-19): [`docs/terminal-cli-validation-2026-04-19.md`](docs/terminal-cli-validation-2026-04-19.md)
+
 ## What it does
 
 `fooks` reduces AI read cost before a coding runtime opens full frontend source by returning one of:
@@ -22,6 +26,7 @@ Phase 1 is intentionally narrow:
 
 ```bash
 fooks init
+fooks run "<prompt>"
 fooks scan
 fooks extract <file> --json
 fooks extract <file> --model-payload
@@ -31,11 +36,32 @@ fooks codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop>
 fooks codex-runtime-hook --native-hook
 fooks install codex-hooks
 fooks status codex
+fooks status cache
 fooks attach codex
 fooks attach claude
 ```
 
 The shipping product name and all supported runtime/storage names are `fooks`.
+
+## First success
+
+Minimal shared path from a clean checkout:
+
+```bash
+npm run build
+fooks attach codex   # or: fooks attach claude
+fooks run "Update src/components/FormSection.tsx"
+```
+
+`fooks run` prepares a shared handoff context file, then leaves execution to the runtime you already use (`codex`, `claude`, `omx`, etc.).
+
+Current support boundary:
+
+- Shared terminal CLI proof today: `init`, `scan`, `decide`, `extract`, `run` handoff context, `attach codex`, `attach claude`
+- Codex-specific extras today: `codex-pre-read`, `codex-runtime-hook`, `install codex-hooks`, `status codex`
+- Claude-specific status today: attach/runtime-manifest proof only; this repo does not yet ship a Claude-native hook installer or runtime bridge
+
+See [`docs/terminal-cli-validation-2026-04-19.md`](docs/terminal-cli-validation-2026-04-19.md) for the exact commands and current proof boundary on `main`.
 
 ## Account context
 
@@ -246,11 +272,14 @@ fooks install codex-hooks
 
 The installer is idempotent: it only adds the `fooks codex-runtime-hook --native-hook` command to `SessionStart`, `UserPromptSubmit`, and `Stop` when those entries are missing, and preserves other hooks already present in `~/.codex/hooks.json`.
 
-For a lightweight trust/debug surface after attach, inspect the Codex runtime status:
+For lightweight trust/debug surfaces after attach or before first scan, inspect runtime and cache status:
 
 ```bash
 fooks status codex
+fooks status cache
 ```
+
+`fooks status cache` reports whether the local cache is `empty`, `healthy`, `recovered`, or `corrupted`, plus entry count and backup availability. Fresh repos now report `empty` until the first scan builds `.fooks/index.json`.
 
 This keeps the product UX quiet by default while still exposing the minimum trust signals we care about in Phase 2B:
 
