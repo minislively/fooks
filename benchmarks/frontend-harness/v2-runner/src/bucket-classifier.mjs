@@ -170,6 +170,49 @@ export class BucketClassifier {
   }
 }
 
+// Test helpers (exported for unit test access)
+function matchesGlob(path, pattern) {
+  // Simple glob matching: convert glob pattern to regex
+  const regexPattern = pattern
+    .replace(/\*\*/g, '<<<DOUBLESTAR>>>')
+    .replace(/\*/g, '[^/]*')
+    .replace(/<<<DOUBLESTAR>>>/g, '.*')
+    .replace(/\?/g, '.')
+    .replace(/\./g, '\\.');
+  const regex = new RegExp(`^${regexPattern}$`);
+  return regex.test(path);
+}
+
+function sourceRootFor(path, roots) {
+  for (const root of roots) {
+    // Convert root pattern to regex (e.g., "apps/*/widgets/" -> "apps/[^/]+/widgets/")
+    const regexPattern = root
+      .replace(/\*\*/g, '.*')
+      .replace(/\*/g, '[^/]+');
+    const regex = new RegExp(`^${regexPattern}`);
+    if (regex.test(path)) return root;
+  }
+  return null;
+}
+
+function matchesPathPattern(path, pattern) {
+  // Check if path matches the given directory prefix pattern
+  return path.startsWith(pattern);
+}
+
+function normalizePath(path) {
+  // Normalize path separators and remove redundant separators
+  return path.replace(/\\/g, '/').replace(/\/+/g, '/');
+}
+
+// Test exports
+export const _test = {
+  matchesGlob,
+  sourceRootFor,
+  matchesPathPattern,
+  normalizePath
+};
+
 // CLI
 if (import.meta.url === `file://${process.argv[1]}`) {
   const repoName = process.argv[2] || 'formbricks';
@@ -197,7 +240,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
     console.log('\n--- Report ---');
     console.log(JSON.stringify(report, null, 2));
-    
+
   } catch (err) {
     console.error('Fatal:', err.message);
     process.exit(1);
