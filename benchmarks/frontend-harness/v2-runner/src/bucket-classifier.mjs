@@ -21,17 +21,27 @@ export const DEFAULT_BUCKETS = [
 
 // Glob pattern matching with brace expansion support
 function matchesGlob(filePath, pattern) {
+  // If pattern doesn't contain /, match against basename only
+  if (!pattern.includes('/')) {
+    const basename = filePath.split('/').pop();
+    return matchesGlobPattern(basename, pattern);
+  }
+  // Otherwise match against full path
+  return matchesGlobPattern(filePath, pattern);
+}
+
+function matchesGlobPattern(str, pattern) {
   // Handle brace expansion: {ts,tsx} -> (ts|tsx)
   let regexPattern = pattern;
 
-  // Escape dots first
-  regexPattern = regexPattern.replace(/\./g, '\\.');
-
-  // Handle brace expansion
+  // Handle brace expansion first
   regexPattern = regexPattern.replace(/\{([^}]+)\}/g, (match, content) => {
     const options = content.split(',').map(s => s.trim());
     return `(${options.join('|')})`;
   });
+
+  // Escape remaining dots
+  regexPattern = regexPattern.replace(/\./g, '\\.');
 
   // Convert glob wildcards to regex
   // ** matches any number of directory levels (including /)
@@ -41,9 +51,9 @@ function matchesGlob(filePath, pattern) {
   // Restore ** as .*
   regexPattern = regexPattern.replace(/<<<DOUBLESTAR>>>/g, '.*');
 
-  // Anchor to match full path
+  // Anchor to match full string
   const regex = new RegExp(`^${regexPattern}$`);
-  return regex.test(filePath);
+  return regex.test(str);
 }
 
 // Find which source root a path belongs to
