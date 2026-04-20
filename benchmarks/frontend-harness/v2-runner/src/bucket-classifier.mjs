@@ -168,9 +168,12 @@ export class BucketClassifier {
       // Check 3: Must not match repo excluded paths
       if (included && repoExcludePatterns.length > 0) {
         const matchesRepoExclude = repoExcludePatterns.some(pattern => {
-          if (matchesGlob(filePath, pattern)) return true;
-          if (filePath.includes(pattern.replace(/\*/g, '').replace(/\//g, ''))) return true;
-          return false;
+          // If pattern ends with /, treat as directory prefix
+          if (pattern.endsWith('/')) {
+            return filePath.startsWith(pattern);
+          }
+          // Otherwise treat as glob
+          return matchesGlob(filePath, pattern);
         });
         if (matchesRepoExclude) {
           included = false;
@@ -210,8 +213,10 @@ export class BucketClassifier {
     }
 
     // Store discovery metadata
+    // candidateCount = files matching discoveryGlobs (not allFiles)
+    const discoveryMatches = allFiles.filter(f => discoveryGlobs.some(g => matchesGlob(f, g)));
     this.lastDiscovery = {
-      candidateCount: allFiles.length,
+      candidateCount: discoveryMatches.length,
       includedCount: candidates.length,
       excludedCounts: {
         discoveryGlobMismatch: excluded.discoveryGlobMismatch.length,
@@ -252,7 +257,12 @@ export class BucketClassifier {
     const bucketId = this.determineBucket(signals, rawBytes, content);
     const confidence = this.calculateConfidence(signals);
 
-    return { filePath, bucketId, confidence, signals, rawBytes, mode: 'raw' };
+    // Determine source root for this file
+    const relPath = relative(this.repo.localPath, filePath).replace(/\\/g, '/');
+    const sourceRoots = this.repo?.sourceRoots || [];
+    const sourceRoot = sourceRootFor(relPath, sourceRoots);
+
+    return { filePath, bucketId, confidence, signals, rawBytes, mode: 'raw', sourceRoot };
   }
 
   determineBucket(signals, rawBytes, content) {
