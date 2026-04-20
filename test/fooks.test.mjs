@@ -476,6 +476,23 @@ test("cli run keeps exact-file prompts to one light context file", () => {
   assert.doesNotMatch(context, /## src\/components\/SimpleButton.tsx/);
 });
 
+test("cli run explains no-op exact-file prompts without implying populated source context", () => {
+  const tempDir = makeTempProject();
+  const output = runText(["run", "Please", "update", "src/components/NewWidget.tsx"], tempDir);
+  assert.match(output, /Shared Handoff Context/);
+  assert.match(output, /Context mode: no-op \(exact-file-new-or-missing-target\)/);
+  assert.match(output, /Files: 0, Size: 0\.0KB/);
+  assert.match(output, /No existing source files were selected for this prompt\./);
+  assert.match(output, /This usually means the prompt names a new or missing \.tsx\/\.jsx file\./);
+  assert.match(output, /Policy metadata only: cat /);
+  assert.match(output, /Codex: start `codex` in this repo, then describe the intended new file\/change\./);
+  assert.match(output, /Claude: start `claude` in this repo, then describe the intended new file\/change\./);
+  assert.doesNotMatch(output, /paste your prompt and the context from .*temp-context\.md/);
+  const context = fs.readFileSync(path.join(tempDir, ".fooks", "temp-context.md"), "utf8");
+  assert.match(context, /"contextMode":"no-op"/);
+  assert.doesNotMatch(context, /## src\/components\//);
+});
+
 test("runtime hook reuses payload only on repeated same-file prompts in one session", () => {
   const sessionId = `hook-repeat-${Date.now()}`;
   const start = handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId }, repoRoot);

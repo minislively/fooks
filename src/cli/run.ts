@@ -84,9 +84,17 @@ export async function runTask(options: RunOptions): Promise<RunResult> {
       console.log(`Context mode: ${executionContext.contextMode} (${executionContext.contextModeReason})`);
       console.log(`Prompt: "${executionContext.prompt}"`);
       console.log("\nManual next steps:");
-      console.log(`Inspect the shared context: cat ${quotedContextPath}`);
-      console.log(`Codex: start \`codex\` in this repo, then paste your prompt and the context from ${quotedContextPath}`);
-      console.log(`Claude: start \`claude\` in this repo, then paste your prompt and the context from ${quotedContextPath}`);
+      if (executionContext.contextMode === "no-op" && executionContext.fileCount === 0) {
+        console.log("No existing source files were selected for this prompt.");
+        console.log("This usually means the prompt names a new or missing .tsx/.jsx file.");
+        console.log(`Policy metadata only: cat ${quotedContextPath}`);
+        console.log("Codex: start `codex` in this repo, then describe the intended new file/change.");
+        console.log("Claude: start `claude` in this repo, then describe the intended new file/change.");
+      } else {
+        console.log(`Inspect the shared context: cat ${quotedContextPath}`);
+        console.log(`Codex: start \`codex\` in this repo, then paste your prompt and the context from ${quotedContextPath}`);
+        console.log(`Claude: start \`claude\` in this repo, then paste your prompt and the context from ${quotedContextPath}`);
+      }
       console.log("\nNext: Open this context with your preferred runtime (codex, claude, omx, etc.)");
       console.log(`Context file: ${executionContext.contextPath}`);
       console.log("======================\n");
