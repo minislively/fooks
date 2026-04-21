@@ -29,6 +29,36 @@ function parsePackJson(stdout) {
   return parsed[0];
 }
 
+
+function assertNoForbiddenPublicClaims(label, text) {
+  const forbidden = [
+    /provider billing-token reduction/i,
+    /billing-token savings/i,
+    /provider cost savings/i,
+    /Claude Read interception is enabled/i,
+    /Claude runtime-token savings are enabled/i,
+    /automatic Claude runtime-token savings/i,
+  ];
+  for (const pattern of forbidden) {
+    assert(!pattern.test(text), `${label} contains forbidden positive claim ${pattern}`);
+  }
+
+  for (const line of text.split(/\r?\n/)) {
+    if (/ccusage replacement/i.test(line)) {
+      assert(/not (?:a )?ccusage replacement|not provider billing tokens, provider costs, or a ccusage replacement/i.test(line), `${label} contains unbounded ccusage replacement wording: ${line}`);
+    }
+    if (/\.omx\//i.test(line) || /\.omx\/state/i.test(line)) {
+      assert(/internal|harness|planning/i.test(line), `${label} exposes .omx as product state: ${line}`);
+    }
+  }
+}
+
+function assertPublicSurfaceClaimBoundaries(surfaces) {
+  for (const [label, text] of Object.entries(surfaces)) {
+    assertNoForbiddenPublicClaims(label, text);
+  }
+}
+
 function assertPackedFiles(packEntry) {
   const paths = new Set(packEntry.files.map((file) => file.path));
   const required = [
@@ -87,6 +117,13 @@ run("npm", ["install", "-g", "--prefix", prefix, tarballPath]);
 const fooksBin = path.join(prefix, "bin", "fooks");
 assert(fs.existsSync(fooksBin), `installed fooks binary not found at ${fooksBin}`);
 
+assertPublicSurfaceClaimBoundaries({
+  "README.md": fs.readFileSync(path.join(repoRoot, "README.md"), "utf8"),
+  "docs/setup.md": fs.readFileSync(path.join(repoRoot, "docs", "setup.md"), "utf8"),
+  "docs/release.md": fs.readFileSync(path.join(repoRoot, "docs", "release.md"), "utf8"),
+  "dist/cli/index.js": fs.readFileSync(path.join(repoRoot, "dist", "cli", "index.js"), "utf8"),
+});
+
 const project = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-project-"));
 const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-runtime-"));
 const codexHome = path.join(runtimeRoot, "codex");
@@ -122,6 +159,37 @@ assert(setup.runtimes?.claude?.blocksOverall === false, "Claude readiness should
 assert(setup.runtimes?.opencode?.state === "tool-ready", `unexpected opencode setup state ${setup.runtimes?.opencode?.state}`);
 assert(setup.runtimes?.opencode?.blocksOverall === false, "opencode readiness should be non-fatal for overall setup");
 assert(setup.attach?.runtimeProof?.details?.includes("account-source=package-repository"), "setup should derive public repo account context from package metadata");
+
+const statusStdout = execFileSync(fooksBin, ["status"], {
+  cwd: project,
+  encoding: "utf8",
+  env: {
+    ...process.env,
+    HOME: path.join(runtimeRoot, "home"),
+    XDG_CONFIG_HOME: path.join(runtimeRoot, "config"),
+    FOOKS_CODEX_HOME: codexHome,
+    FOOKS_CLAUDE_HOME: claudeHome,
+  },
+});
+const claudeStatusStdout = execFileSync(fooksBin, ["status", "claude"], {
+  cwd: project,
+  encoding: "utf8",
+  env: {
+    ...process.env,
+    HOME: path.join(runtimeRoot, "home"),
+    XDG_CONFIG_HOME: path.join(runtimeRoot, "config"),
+    FOOKS_CODEX_HOME: codexHome,
+    FOOKS_CLAUDE_HOME: claudeHome,
+  },
+});
+assertPublicSurfaceClaimBoundaries({
+  "fooks setup output": setupStdout,
+  "fooks status output": statusStdout,
+  "fooks status claude output": claudeStatusStdout,
+});
+const status = JSON.parse(statusStdout);
+assert(status.claimBoundary?.includes("not provider billing tokens"), "status should keep provider billing boundary");
+assert(status.breakdown && typeof status.breakdown === "object", "status should expose runtime/source breakdown");
 assert(fs.existsSync(path.join(codexHome, "hooks.json")), "isolated Codex hooks file should be written under FOOKS_CODEX_HOME");
 const claudeLocalSettings = path.join(project, ".claude", "settings.local.json");
 assert(fs.existsSync(claudeLocalSettings), "Claude project-local hooks should be installed under the project");

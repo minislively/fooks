@@ -45,7 +45,7 @@ context-compression mechanics and targeted-file behavior, but must not claim
 stable direct runtime-token/time wins until a future multi-task benchmark class
 proves them.
 
-Bare `fooks status` reports local estimated context-size telemetry from `.fooks/sessions`. Its CLI output omits per-session details, is for maintainer/user inspection only, and must not be treated as provider billing tokens, provider costs, or a `ccusage` replacement.
+Bare `fooks status` reports local estimated context-size telemetry from `.fooks/sessions`, including runtime/source breakdowns for Codex automatic hooks and Claude project-local context hooks. Its CLI output omits per-session details, is for maintainer/user inspection only, and must not be treated as provider billing tokens, provider costs, or a `ccusage` replacement.
 
 Layer 2 now has two proposal-only R4 paired smokes through the current
 `codex exec` runner. In both pairs, the prompt supplied to Codex dropped from
