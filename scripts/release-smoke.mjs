@@ -117,7 +117,7 @@ const setup = JSON.parse(setupStdout);
 assert(setup.ready === true, `expected setup.ready=true, got ${setup.ready}`);
 assert(setup.runtimes?.codex?.state === "automatic-ready", `unexpected Codex setup state ${setup.runtimes?.codex?.state}`);
 assert(setup.runtimes?.codex?.blocksOverall === true, "Codex should be the only overall-blocking runtime");
-assert(setup.runtimes?.claude?.state === "handoff-ready", `unexpected Claude setup state ${setup.runtimes?.claude?.state}`);
+assert(setup.runtimes?.claude?.state === "context-hook-ready", `unexpected Claude setup state ${setup.runtimes?.claude?.state}`);
 assert(setup.runtimes?.claude?.blocksOverall === false, "Claude readiness should be non-fatal for overall setup");
 assert(setup.runtimes?.opencode?.state === "tool-ready", `unexpected opencode setup state ${setup.runtimes?.opencode?.state}`);
 assert(setup.runtimes?.opencode?.blocksOverall === false, "opencode readiness should be non-fatal for overall setup");
@@ -133,6 +133,21 @@ assert(setup.scope?.userRuntime?.paths?.includes(path.join(codexHome, "hooks.jso
 assert(setup.scope?.userRuntime?.paths?.some((item) => item.startsWith(path.join(codexHome, "fooks", "attachments"))), "setup scope should include isolated Codex runtime manifest path");
 assert(setup.scope?.nonGoals?.some((item) => item.includes("No --scope option")), "setup scope should document that no new scope option is required");
 assert(fs.existsSync(path.join(codexHome, "hooks.json")), "isolated Codex hooks file should be written under FOOKS_CODEX_HOME");
+const claudeLocalSettings = path.join(project, ".claude", "settings.local.json");
+assert(fs.existsSync(claudeLocalSettings), "Claude project-local hooks should be installed under the project");
+const claudeSettings = JSON.parse(fs.readFileSync(claudeLocalSettings, "utf8"));
+assert(
+  JSON.stringify(Object.keys(claudeSettings.hooks ?? {}).sort()) === JSON.stringify(["SessionStart", "UserPromptSubmit"]),
+  "Claude smoke hooks should be limited to SessionStart and UserPromptSubmit",
+);
+assert(
+  claudeSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command === "fooks claude-runtime-hook --native-hook",
+  "Claude SessionStart smoke hook should use the canonical fooks command",
+);
+assert(
+  claudeSettings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command === "fooks claude-runtime-hook --native-hook",
+  "Claude UserPromptSubmit smoke hook should use the canonical fooks command",
+);
 assert(fs.existsSync(path.join(project, ".opencode", "tools", "fooks_extract.ts")), "opencode helper should be installed project-locally");
 assert(fs.existsSync(path.join(project, ".opencode", "commands", "fooks-extract.md")), "opencode slash command should be installed project-locally");
 

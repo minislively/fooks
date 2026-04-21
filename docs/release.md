@@ -18,7 +18,7 @@ Before a public release, keep the public claim surface aligned to this matrix:
 | Environment | Release-ready wording | Do not claim |
 | --- | --- | --- |
 | Codex | Automatic repeated-file hook path through `fooks setup`; prepared-context/proxy evidence only | Universal file-read interception or measured runtime-token savings without Codex telemetry |
-| Claude | Manual/shared handoff prepared by `fooks setup` when possible | Automatic hooks, prompt interception, or runtime-token savings |
+| Claude | Project-local context hooks for `SessionStart` / `UserPromptSubmit` plus manual/shared handoff fallback prepared by `fooks setup` when possible | `Read` interception, full prompt interception parity, or runtime-token savings |
 | opencode | Manual/semi-automatic custom tool and slash command prepared by `fooks setup` when possible | Read interception or automatic runtime-token savings |
 
 The opencode boundary is intentional. The current bridge may steer users toward
@@ -80,7 +80,7 @@ npm ls -g --depth=0 | grep -E 'fooks|oh-my-fooks'
 | Layer 2 applied-code / multi-task evidence absent | Runner path plus two repeated proposal-only smokes now exist. The applied acceptance gate is implemented/self-tested, but matched live generated outputs and multi-task evidence do not exist yet. | Blocks only stable Layer 2 runtime-token/time win claims and applied-code benchmark-win wording. |
 | Direct-Codex runtime-token regression | Negative/unstable Formbricks evidence is documented and linked. | Blocks stable runtime-token/time win claims. |
 | Local `fooks status` estimates | Bare status is documented as local context-size telemetry only. | Blocks billing-token, provider-cost, or `ccusage` replacement wording. |
-| Claude/opencode automatic savings | Explicit non-goal unless new runtime bridges are designed and measured. | Keep handoff/tool wording only. |
+| Claude/opencode automatic savings | Claude now has bounded project-local context hooks, but no measured runtime-token savings and no `Read` interception. opencode remains a manual/semi-automatic tool bridge. | Keep Claude context-hook wording and opencode tool wording only. |
 
 ## Pre-publish blockers
 
@@ -166,6 +166,6 @@ printf 'export function App(){ return <main>Hello</main>; }\n' > "$TMP_PROJECT/s
 )
 ```
 
-Expected shape: top-level `ready: true`, `runtimes.codex.state: "automatic-ready"`, `runtimes.claude.state: "handoff-ready"` when the Claude home exists, and `runtimes.opencode.state: "tool-ready"`. Claude/opencode blockers are non-fatal and must remain bounded to handoff/tool readiness wording.
+Expected shape: top-level `ready: true`, `runtimes.codex.state: "automatic-ready"`, `runtimes.claude.state: "context-hook-ready"` when the Claude home exists and project-local hooks install cleanly, and `runtimes.opencode.state: "tool-ready"`. Claude/opencode blockers are non-fatal and must remain bounded to Claude context-hook/handoff and opencode tool readiness wording.
 
 The release-prep PR must state that `npm publish` was not run.
