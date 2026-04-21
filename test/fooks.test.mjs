@@ -43,6 +43,9 @@ const { classifyPromptContext, discoverRelevantFilesByPolicy } = require(path.jo
 const { prepareExecutionContext } = require(path.join(repoRoot, "dist", "adapters", "codex.js"));
 const { attachClaude } = require(path.join(repoRoot, "dist", "adapters", "claude.js"));
 const { handleCodexNativeHookPayload } = require(path.join(repoRoot, "dist", "adapters", "codex-native-hook.js"));
+const { installClaudeHookPreset, claudeLocalSettingsPath } = require(path.join(repoRoot, "dist", "adapters", "claude-hook-preset.js"));
+const { handleClaudeRuntimeHook, CLAUDE_ADDITIONAL_CONTEXT_MAX_CHARS } = require(path.join(repoRoot, "dist", "adapters", "claude-runtime-hook.js"));
+const { handleClaudeNativeHookPayload } = require(path.join(repoRoot, "dist", "adapters", "claude-native-hook.js"));
 const { detectRunner } = require(path.join(repoRoot, "dist", "cli", "run.js"));
 const ts = require("typescript");
 
@@ -1233,12 +1236,12 @@ test("setup prepares explicit one-time Codex activation", () => {
   assert.equal(result.status.lifecycleState, "ready");
   assert.equal(result.runtimes.codex.state, "automatic-ready");
   assert.equal(result.runtimes.codex.blocksOverall, true);
-  assert.equal(result.runtimes.claude.state, "handoff-ready");
+  assert.equal(result.runtimes.claude.state, "context-hook-ready");
   assert.equal(result.runtimes.claude.blocksOverall, false);
   assert.equal(result.runtimes.opencode.state, "tool-ready");
   assert.equal(result.runtimes.opencode.blocksOverall, false);
-  assert.deepEqual(result.summary, ["codex:automatic-ready:ready", "claude:handoff-ready:ready", "opencode:tool-ready:ready"]);
-  assert.ok(result.claimBoundaries.some((item) => item.includes("Claude setup prepares manual/shared handoff artifacts only")));
+  assert.deepEqual(result.summary, ["codex:automatic-ready:ready", "claude:context-hook-ready:ready", "opencode:tool-ready:ready"]);
+  assert.ok(result.claimBoundaries.some((item) => item.includes("Claude setup installs project-local context hooks")));
   assert.ok(result.nextSteps.some((item) => item.includes("Codex")));
   assert.ok(fs.existsSync(path.join(tempDir, ".opencode", "tools", "fooks_extract.ts")));
   assert.ok(fs.existsSync(path.join(tempDir, ".opencode", "commands", "fooks-extract.md")));
@@ -1264,7 +1267,7 @@ test("setup can become ready for a public repo without an active account overrid
   assert.equal(result.ready, true);
   assert.equal(result.state, "ready");
   assert.equal(result.runtimes.codex.state, "automatic-ready");
-  assert.equal(result.runtimes.claude.state, "handoff-ready");
+  assert.equal(result.runtimes.claude.state, "context-hook-ready");
   assert.equal(result.runtimes.opencode.state, "tool-ready");
   assert.ok(result.attach.runtimeProof.details.includes("account-source=package-repository"));
   assert.ok(result.attach.runtimeProof.details.includes("account-context=example-org"));
@@ -1350,7 +1353,7 @@ test("setup reports partial activation when Codex hooks cannot be parsed", () =>
   assert.equal(result.hooks, null);
   assert.equal(result.runtimes.codex.state, "partial");
   assert.equal(result.runtimes.codex.blocksOverall, true);
-  assert.equal(result.runtimes.claude.state, "handoff-ready");
+  assert.equal(result.runtimes.claude.state, "context-hook-ready");
   assert.equal(result.runtimes.opencode.state, "tool-ready");
   assert.ok(result.blockers.some((item) => item.includes("Codex hook preset install failed")));
   assert.ok(result.nextSteps.some((item) => item.includes("Fix setup blockers")));
@@ -1375,7 +1378,7 @@ test("setup reports partial activation when the Codex runtime manifest path cann
   assert.equal(result.state, "partial");
   assert.equal(result.attach.runtimeProof.status, "blocked");
   assert.equal(result.runtimes.codex.state, "partial");
-  assert.equal(result.runtimes.claude.state, "handoff-ready");
+  assert.equal(result.runtimes.claude.state, "context-hook-ready");
   assert.ok(result.attach.runtimeProof.blocker.includes("Codex runtime manifest install failed"));
   assert.ok(result.attach.runtimeProof.blocker.match(/EEXIST|ENOTDIR/));
   assert.ok(result.blockers.some((item) => item.includes("Codex runtime manifest install failed")));
@@ -1410,8 +1413,8 @@ test("cli help advertises setup and package install has no auto hook side effect
   const help = runText(["--help"]);
   assert.match(help, /fooks setup/);
   assert.match(help, /fooks status claude/);
-  assert.match(help, /Codex: automatic runtime hook path/);
-  assert.match(help, /Claude: manual\/shared handoff artifacts only/);
+  assert.match(help, /Codex: automatic repeated-file runtime hook path/);
+  assert.match(help, /Claude: project-local context hooks/);
   assert.match(help, /opencode: manual\/semi-automatic custom tool/);
   assert.doesNotMatch(help, /Unknown command/);
 
@@ -1446,27 +1449,24 @@ test("setup runtime summary keeps Claude and opencode claims bounded", () => {
 
   assert.equal(result.runtimes.claude.blocksOverall, false);
   assert.equal(result.runtimes.opencode.blocksOverall, false);
-  assert.match(text, /Claude automatic hooks are not enabled by fooks setup/);
+  assert.match(text, /Claude P0 context hooks are project-local only/);
   assert.match(text, /opencode setup does not intercept read calls/);
   assert.match(text, /opencode setup does not prove automatic runtime-token savings/);
-  assert.doesNotMatch(text, /Claude automatic hooks are enabled/i);
-  assert.doesNotMatch(text, /Claude prompt interception is enabled/i);
+  assert.doesNotMatch(text, /Claude Read interception is enabled/i);
+  assert.doesNotMatch(text, /Claude runtime-token savings are enabled/i);
   assert.doesNotMatch(text, /automatic opencode read interception is enabled/i);
   assert.doesNotMatch(text, /automatic opencode runtime-token savings are enabled/i);
 });
 
-test("status claude reports handoff-ready artifacts without automatic runtime claims", () => {
+test("status claude reports handoff-ready artifacts when project-local hooks are absent", () => {
   const tempDir = makeTempProject();
-  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
   const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-claude-home-"));
   const env = {
     FOOKS_ACTIVE_ACCOUNT: "minislively",
-    FOOKS_CODEX_HOME: codexHome,
     FOOKS_CLAUDE_HOME: claudeHome,
   };
 
-  const setup = run(["setup"], tempDir, env);
-  assert.equal(setup.runtimes.claude.state, "handoff-ready");
+  run(["attach", "claude"], tempDir, env);
 
   const status = run(["status", "claude"], tempDir, env);
   assert.equal(status.runtime, "claude");
@@ -1475,23 +1475,184 @@ test("status claude reports handoff-ready artifacts without automatic runtime cl
   assert.equal(status.mode, "manual-shared-handoff");
   assert.deepEqual(status.blockers, []);
   assert.equal(status.adapter.installed, true);
-  assert.equal(status.adapter.adapterJson.exists, true);
   assert.equal(status.adapter.adapterJson.valid, true);
-  assert.equal(status.adapter.contextTemplate.exists, true);
   assert.equal(status.adapter.contextTemplate.valid, true);
   assert.equal(status.manifest.home, claudeHome);
-  assert.equal(status.manifest.exists, true);
   assert.equal(status.manifest.valid, true);
-  assert.equal(status.manifest.runtimeMatches, true);
-  assert.equal(status.manifest.projectRootMatches, true);
-  assert.equal(fs.existsSync(status.manifest.path), true);
+  assert.equal(status.hooks.exists, false);
+  assert.equal(status.hooks.ready, false);
+  assert.deepEqual(status.hooks.missingEvents, ["SessionStart", "UserPromptSubmit"]);
 
   const text = collectStrings(status).join("\n");
   assert.match(text, /manual-shared-handoff/);
-  assert.match(text, /Claude automatic hooks are not enabled by fooks/);
-  assert.match(text, /read-only handoff-artifact health check/);
-  assert.doesNotMatch(text, /Claude prompt interception is enabled/i);
+  assert.match(text, /Run fooks install claude-hooks/);
+  assert.doesNotMatch(text, /Claude Read interception is enabled/i);
   assert.doesNotMatch(text, /automatic Claude token savings are enabled/i);
+});
+
+test("install claude-hooks creates local settings and status reports context-hook-ready", () => {
+  const tempDir = makeTempProject();
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-claude-home-"));
+  const env = { FOOKS_CLAUDE_HOME: claudeHome };
+  run(["attach", "claude"], tempDir, env);
+
+  const result = run(["install", "claude-hooks"], tempDir, env);
+  assert.equal(result.command, "install claude-hooks");
+  assert.equal(result.runtime, "claude");
+  assert.equal(result.created, true);
+  assert.equal(result.modified, true);
+  assert.deepEqual(result.installedEvents, ["SessionStart", "UserPromptSubmit"]);
+  assert.equal(result.settingsPath, path.join(fs.realpathSync(tempDir), ".claude", "settings.local.json"));
+
+  const settings = JSON.parse(fs.readFileSync(path.join(tempDir, ".claude", "settings.local.json"), "utf8"));
+  assert.equal(settings.hooks.SessionStart[0].hooks[0].command, "fooks claude-runtime-hook --native-hook");
+  assert.equal(settings.hooks.UserPromptSubmit[0].hooks[0].command, "fooks claude-runtime-hook --native-hook");
+  assert.equal(settings.hooks.Read, undefined);
+  assert.equal(settings.hooks.PreToolUse, undefined);
+  assert.equal(settings.hooks.PostToolUse, undefined);
+  assert.equal(settings.hooks.Stop, undefined);
+  assert.equal(settings.hooks.SubagentStop, undefined);
+  assert.equal(fs.existsSync(path.join(tempDir, ".claude", "settings.json")), false);
+
+  const second = run(["install", "claude-hooks"], tempDir, env);
+  assert.equal(second.modified, false);
+  assert.deepEqual(second.skippedEvents, ["SessionStart", "UserPromptSubmit"]);
+
+  const status = run(["status", "claude"], tempDir, env);
+  assert.equal(status.state, "context-hook-ready");
+  assert.equal(status.mode, "automatic-context-hook");
+  assert.equal(status.ready, true);
+  assert.equal(status.hooks.ready, true);
+  assert.deepEqual(status.hooks.installedEvents, ["SessionStart", "UserPromptSubmit"]);
+  assert.deepEqual(status.hooks.missingEvents, []);
+  assert.deepEqual(status.hooks.unexpectedFooksEvents, []);
+});
+
+test("install claude-hooks preserves settings and avoids global/shared mutation", () => {
+  const tempDir = makeTempProject();
+  const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-home-"));
+  const globalClaudeDir = path.join(fakeHome, ".claude");
+  fs.mkdirSync(globalClaudeDir, { recursive: true });
+  const globalSettings = path.join(globalClaudeDir, "settings.json");
+  fs.writeFileSync(globalSettings, JSON.stringify({ hooks: { UserPromptSubmit: [] }, keep: true }, null, 2));
+  fs.mkdirSync(path.join(tempDir, ".claude"), { recursive: true });
+  const sharedSettings = path.join(tempDir, ".claude", "settings.json");
+  fs.writeFileSync(sharedSettings, JSON.stringify({ shared: true }, null, 2));
+  const localSettings = claudeLocalSettingsPath(tempDir);
+  fs.writeFileSync(localSettings, JSON.stringify({
+    permissions: { allow: ["Bash(echo:*)"] },
+    hooks: {
+      UserPromptSubmit: [{ hooks: [{ type: "command", command: "node /tmp/other.js" }] }],
+    },
+  }, null, 2));
+
+  const result = installClaudeHookPreset(tempDir, "fooks");
+  assert.equal(result.created, false);
+  assert.equal(result.modified, true);
+  assert.ok(result.backupPath);
+  const merged = JSON.parse(fs.readFileSync(localSettings, "utf8"));
+  assert.deepEqual(merged.permissions, { allow: ["Bash(echo:*)"] });
+  assert.ok(merged.hooks.UserPromptSubmit.some((matcher) => matcher.hooks.some((hook) => hook.command === "node /tmp/other.js")));
+  assert.equal(fs.readFileSync(globalSettings, "utf8"), JSON.stringify({ hooks: { UserPromptSubmit: [] }, keep: true }, null, 2));
+  assert.equal(fs.readFileSync(sharedSettings, "utf8"), JSON.stringify({ shared: true }, null, 2));
+});
+
+test("install claude-hooks reports malformed local settings without overwriting", () => {
+  const tempDir = makeTempProject();
+  fs.mkdirSync(path.join(tempDir, ".claude"), { recursive: true });
+  const localSettings = claudeLocalSettingsPath(tempDir);
+  fs.writeFileSync(localSettings, "{not-json");
+  const result = installClaudeHookPreset(tempDir, "fooks");
+  assert.equal(result.modified, false);
+  assert.match(result.blocker, /not valid JSON/);
+  assert.equal(fs.readFileSync(localSettings, "utf8"), "{not-json");
+});
+
+test("claude runtime hook injects on first eligible prompt and no-ops unsupported prompts", () => {
+  const tempDir = makeTempProject();
+  const start = handleClaudeRuntimeHook({ hookEventName: "SessionStart", sessionId: "claude-start" }, tempDir);
+  assert.equal(start.action, "inject");
+  assert.ok(start.additionalContext.length <= CLAUDE_ADDITIONAL_CONTEXT_MAX_CHARS);
+  assert.match(start.additionalContext, /does not intercept Claude Read\/tool calls/);
+
+  const prompt = handleClaudeRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: "claude-first",
+      prompt: "Explain src/components/FormSection.tsx",
+    },
+    tempDir,
+  );
+  assert.equal(prompt.action, "inject");
+  assert.equal(prompt.filePath, path.join("src", "components", "FormSection.tsx"));
+  assert.ok(prompt.additionalContext.length <= CLAUDE_ADDITIONAL_CONTEXT_MAX_CHARS);
+  assert.match(prompt.additionalContext, /fooks: Claude context hook/);
+  assert.match(prompt.additionalContext, /src\/components\/FormSection\.tsx/);
+
+  const noTarget = handleClaudeRuntimeHook({ hookEventName: "UserPromptSubmit", prompt: "Tell me about this repo" }, tempDir);
+  assert.equal(noTarget.action, "noop");
+  const linkedTs = handleClaudeRuntimeHook({ hookEventName: "UserPromptSubmit", prompt: "Explain src/components/Button.types.ts" }, tempDir);
+  assert.equal(linkedTs.action, "noop");
+  const missing = handleClaudeRuntimeHook({ hookEventName: "UserPromptSubmit", prompt: "Create src/components/NewPanel.tsx" }, tempDir);
+  assert.equal(missing.action, "noop");
+});
+
+test("claude native hook bridge activates only in attached Claude projects", () => {
+  const detachedDir = makeTempProject();
+  const detached = handleClaudeNativeHookPayload(
+    {
+      hook_event_name: "UserPromptSubmit",
+      cwd: detachedDir,
+      prompt: "Explain src/components/FormSection.tsx",
+      session_id: "claude-detached",
+    },
+    detachedDir,
+  );
+  assert.equal(detached, null);
+
+  const attachedDir = makeTempProject();
+  run(["attach", "claude"], attachedDir, { FOOKS_CLAUDE_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fooks-claude-home-")) });
+  const sessionStart = handleClaudeNativeHookPayload({ hook_event_name: "SessionStart", cwd: attachedDir, session_id: "claude-native-start" }, attachedDir);
+  assert.equal(sessionStart.hookSpecificOutput.hookEventName, "SessionStart");
+  assert.ok(sessionStart.hookSpecificOutput.additionalContext.length <= CLAUDE_ADDITIONAL_CONTEXT_MAX_CHARS);
+
+  const prompt = handleClaudeNativeHookPayload(
+    {
+      hook_event_name: "UserPromptSubmit",
+      cwd: attachedDir,
+      prompt: "Explain src/components/FormSection.tsx",
+      session_id: "claude-native-first",
+    },
+    attachedDir,
+  );
+  assert.equal(prompt.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+  assert.match(prompt.hookSpecificOutput.additionalContext, /src\/components\/FormSection\.tsx/);
+  assert.equal(handleClaudeNativeHookPayload({ hook_event_name: "PreToolUse", cwd: attachedDir }, attachedDir), null);
+  assert.equal(handleClaudeNativeHookPayload({ hook_event_name: "SubagentStop", cwd: attachedDir }, attachedDir), null);
+});
+
+test("cli claude-runtime-hook handles native JSON and malformed JSON", () => {
+  const attachedDir = makeTempProject();
+  run(["attach", "claude"], attachedDir, { FOOKS_CLAUDE_HOME: fs.mkdtempSync(path.join(os.tmpdir(), "fooks-claude-home-")) });
+  const output = JSON.parse(runTextWithInput(
+    ["claude-runtime-hook", "--native-hook"],
+    JSON.stringify({
+      hook_event_name: "UserPromptSubmit",
+      cwd: attachedDir,
+      prompt: "Explain src/components/FormSection.tsx",
+      session_id: "cli-claude-native",
+    }),
+    attachedDir,
+  ));
+  assert.equal(output.hookSpecificOutput.hookEventName, "UserPromptSubmit");
+
+  let failure = "";
+  try {
+    runTextWithInput(["claude-runtime-hook", "--native-hook"], "{not-json", attachedDir);
+  } catch (error) {
+    failure = `${error.stdout ?? ""}${error.stderr ?? ""}`;
+  }
+  assert.match(failure, /fooks claude-runtime-hook: invalid JSON payload/);
 });
 
 test("status claude reports blocked state without creating artifacts", () => {
