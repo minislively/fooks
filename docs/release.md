@@ -45,7 +45,7 @@ context-compression mechanics and targeted-file behavior, but must not claim
 stable direct runtime-token/time wins until a future multi-task benchmark class
 proves them.
 
-Bare `fooks status` reports local estimated context-size telemetry from `.fooks/sessions`. Its CLI output omits per-session details, is for maintainer/user inspection only, and must not be treated as provider billing tokens, provider costs, or a `ccusage` replacement.
+Bare `fooks status` reports local estimated context-size telemetry from `.fooks/sessions`, including runtime/source breakdowns for Codex automatic hooks and Claude project-local context hooks. Its CLI output omits per-session details, is for maintainer/user inspection only, and must not be treated as provider billing tokens, provider costs, or a `ccusage` replacement.
 
 Codex setup/attach/status readiness is also local state only. It may show that
 Codex hooks, manifests, and trust metadata were prepared, but it is not live
