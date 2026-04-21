@@ -69,7 +69,7 @@ fooks extract src/components/Button.tsx --model-payload
 fooks scan
 ```
 
-`fooks status` reads local `.fooks/sessions` summaries produced by the Codex hook path. The values are approximate context-size estimates only; the CLI status output omits per-session details and is not provider billing tokens, provider costs, or a `ccusage` replacement.
+`fooks status` reads local `.fooks/sessions` summaries produced by the Codex automatic hook path and the Claude project-local context-hook path. The values are approximate context-size estimates only; status includes runtime/source breakdowns, omits per-session details, and is not provider billing tokens, provider costs, or a `ccusage` replacement.
 
 ## opencode support
 
