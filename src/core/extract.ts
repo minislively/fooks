@@ -206,6 +206,12 @@ function collectSectionsFromJsx(sourceFile: ts.SourceFile): { sections: string[]
   return { sections: [...sections].slice(0, 12), jsxDepth: maxDepth };
 }
 
+function getNodeLines(sourceFile: ts.SourceFile, node: ts.Node): { lineStart: number; lineEnd: number } {
+  const lineStart = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+  const lineEnd = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
+  return { lineStart, lineEnd };
+}
+
 function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<ExtractionResult, "behavior" | "structure" | "snippets"> {
   const hooks = new Set<string>();
   const stateSummary = new Set<string>();
@@ -214,6 +220,9 @@ function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<Extraction
   const conditionalRenders = new Set<string>();
   const repeatedBlocks = new Set<string>();
   const snippetCandidates: Array<{ label: string; code: string; reason: string; lineStart: number; lineEnd: number }> = [];
+  const hookLocations: Array<{ name: string; lineStart: number; lineEnd: number }> = [];
+  const effectLocations: Array<{ name: string; deps?: string; lineStart: number; lineEnd: number }> = [];
+  const eventHandlerLocations: Array<{ name: string; lineStart: number; lineEnd: number }> = [];
   let hasSideEffects = false;
 
   const addSnippet = (label: string, node: ts.Node, reason: string): void => {
@@ -221,8 +230,7 @@ function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<Extraction
     const cleaned = code.split("\n").slice(0, 12).join("\n").trim();
     if (!cleaned) return;
     if (snippetCandidates.some((item) => item.code === cleaned)) return;
-    const lineStart = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
-    const lineEnd = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
+    const { lineStart, lineEnd } = getNodeLines(sourceFile, node);
     snippetCandidates.push({ label, code: cleaned, reason, lineStart, lineEnd });
   };
 
@@ -232,6 +240,7 @@ function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<Extraction
       const shortName = callName.split(".").pop() ?? callName;
       if (HOOK_NAMES.has(shortName) || /^use[A-Z]/.test(shortName)) {
         hooks.add(shortName);
+        hookLocations.push({ name: shortName, ...getNodeLines(sourceFile, node) });
       }
       if (shortName === "useState" && ts.isVariableDeclaration(node.parent?.parent) && ts.isArrayBindingPattern(node.parent.parent.name)) {
         const names = node.parent.parent.name.elements
@@ -245,6 +254,7 @@ function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<Extraction
         const deps = depsArg ? depsArg.getText(sourceFile) : undefined;
         effects.add(deps ? `${shortName} deps:${deps}` : shortName);
         hasSideEffects = true;
+        effectLocations.push({ name: shortName, deps, ...getNodeLines(sourceFile, node) });
         addSnippet(shortName, node.parent, "effect-hook");
       }
       if (callName.endsWith(".map") || shortName === "map") {
@@ -255,16 +265,19 @@ function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<Extraction
 
     if (ts.isFunctionDeclaration(node) && node.name && /^handle[A-Z]/.test(node.name.text)) {
       eventHandlers.add(node.name.text);
+      eventHandlerLocations.push({ name: node.name.text, ...getNodeLines(sourceFile, node) });
       addSnippet(node.name.text, node, "event-handler");
     }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && /^handle[A-Z]/.test(node.name.text)) {
       eventHandlers.add(node.name.text);
+      eventHandlerLocations.push({ name: node.name.text, ...getNodeLines(sourceFile, node.parent?.parent ?? node) });
       addSnippet(node.name.text, node.parent?.parent ?? node, "event-handler");
     }
     if (ts.isJsxAttribute(node)) {
       const attrName = node.name.getText(sourceFile);
       if (/^on[A-Z]/.test(attrName)) {
         eventHandlers.add(attrName);
+        eventHandlerLocations.push({ name: attrName, ...getNodeLines(sourceFile, node) });
       }
     }
     if (ts.isConditionalExpression(node) || (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)) {
@@ -286,6 +299,9 @@ function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<Extraction
       effects: [...effects],
       eventHandlers: [...eventHandlers],
       hasSideEffects,
+      hookLocations: hookLocations.length > 0 ? hookLocations : undefined,
+      effectLocations: effectLocations.length > 0 ? effectLocations : undefined,
+      eventHandlerLocations: eventHandlerLocations.length > 0 ? eventHandlerLocations : undefined,
     },
     structure: {
       sections,

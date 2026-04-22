@@ -31,6 +31,9 @@ export type ExtractionResult = {
     effects?: string[];
     eventHandlers?: string[];
     hasSideEffects?: boolean;
+    hookLocations?: Array<{ name: string; lineStart: number; lineEnd: number }>;
+    effectLocations?: Array<{ name: string; deps?: string; lineStart: number; lineEnd: number }>;
+    eventHandlerLocations?: Array<{ name: string; lineStart: number; lineEnd: number }>;
   };
   structure?: {
     sections?: string[];
@@ -76,6 +79,9 @@ export type ModelFacingPayload = {
     effects?: string[];
     eventHandlers?: string[];
     hasSideEffects?: boolean;
+    hookLocations?: Array<{ name: string; lineStart: number; lineEnd: number }>;
+    effectLocations?: Array<{ name: string; deps?: string; lineStart: number; lineEnd: number }>;
+    eventHandlerLocations?: Array<{ name: string; lineStart: number; lineEnd: number }>;
   };
   structure?: {
     sections?: string[];

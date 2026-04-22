@@ -39,6 +39,9 @@ export function toModelFacingPayload(result: ExtractionResult, cwd = process.cwd
         ...(pruneArray(result.behavior.effects) ? { effects: result.behavior.effects } : {}),
         ...(pruneArray(result.behavior.eventHandlers) ? { eventHandlers: result.behavior.eventHandlers } : {}),
         ...(result.behavior.hasSideEffects ? { hasSideEffects: result.behavior.hasSideEffects } : {}),
+        ...(pruneArray(result.behavior.hookLocations) ? { hookLocations: result.behavior.hookLocations } : {}),
+        ...(pruneArray(result.behavior.effectLocations) ? { effectLocations: result.behavior.effectLocations } : {}),
+        ...(pruneArray(result.behavior.eventHandlerLocations) ? { eventHandlerLocations: result.behavior.eventHandlerLocations } : {}),
       })
     : undefined;
 
