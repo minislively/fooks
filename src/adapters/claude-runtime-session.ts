@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { getFileMtimeMs } from "./shared-freshness";
 import { sanitizeDataKey } from "../core/paths";
 
 type SeenFileState = {
@@ -65,12 +66,7 @@ export function markClaudeRuntimeSeenFile(cwd: string, sessionKey: string, fileP
   const state = readClaudeRuntimeSession(cwd, sessionKey);
   const now = new Date().toISOString();
   const existing = state.seenFiles[filePath];
-  let lastModifiedAtMs: number | undefined;
-  try {
-    lastModifiedAtMs = fs.statSync(path.join(cwd, filePath)).mtimeMs;
-  } catch {
-    // ignore missing file
-  }
+  const lastModifiedAtMs = getFileMtimeMs(path.join(cwd, filePath));
   state.seenFiles[filePath] = existing
     ? {
         ...existing,

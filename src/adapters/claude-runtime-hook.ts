@@ -3,7 +3,8 @@ import path from "node:path";
 import { decideCodexPreRead } from "./codex-pre-read";
 import { clearClaudeRuntimeSession, initializeClaudeRuntimeSession, markClaudeRuntimeSeenFile, readClaudeRuntimeSession, resolveClaudeRuntimeSessionKey } from "./claude-runtime-session";
 import { hasFullReadEscapeHatch, resolvePromptFileContext } from "./codex-runtime-prompt";
-import type { ContextBudget, ContextMode, PromptSpecificity } from "../core/schema";
+import { getFileMtimeMs, hasFileChanged } from "./shared-freshness";
+import type { CodexPreReadDecision, ContextBudget, ContextMode, PromptSpecificity } from "../core/schema";
 import {
   estimateFileBytes,
   estimateTextBytes,
@@ -41,6 +42,7 @@ export type ClaudeRuntimeHookDecision = {
     eligible: boolean;
     bounded: boolean;
     escapeHatchUsed?: boolean;
+    decision?: CodexPreReadDecision;
   };
   fallback?: {
     action: "full-read";
@@ -229,9 +231,9 @@ export function handleClaudeRuntimeHook(input: ClaudeRuntimeHookInput, cwd = pro
     return runtimeDecision;
   }
 
-  const currentMtime = fs.statSync(resolvedTarget).mtimeMs;
+  const currentMtime = getFileMtimeMs(resolvedTarget);
   const priorMtime = readClaudeRuntimeSession(cwd, sessionKey).seenFiles[target]?.lastModifiedAtMs;
-  const refreshed = priorMtime !== undefined && priorMtime !== currentMtime;
+  const refreshed = hasFileChanged(priorMtime, currentMtime);
 
   const { statePath, seenCount } = markClaudeRuntimeSeenFile(cwd, sessionKey, target);
   const repeatedFile = seenCount >= 2;
@@ -320,6 +322,7 @@ export function handleClaudeRuntimeHook(input: ClaudeRuntimeHookInput, cwd = pro
         eligible: true,
         bounded: true,
         escapeHatchUsed: false,
+        decision,
       },
     };
     const originalEstimatedBytes = targetEstimatedBytes(cwd, target);
@@ -350,6 +353,7 @@ export function handleClaudeRuntimeHook(input: ClaudeRuntimeHookInput, cwd = pro
       eligible: decision.eligible,
       bounded: true,
       escapeHatchUsed: false,
+      decision,
     },
     fallback: {
       action: "full-read",

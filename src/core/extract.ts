@@ -213,14 +213,17 @@ function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<Extraction
   const eventHandlers = new Set<string>();
   const conditionalRenders = new Set<string>();
   const repeatedBlocks = new Set<string>();
-  const snippetCandidates: Array<{ label: string; code: string; reason: string }> = [];
+  const snippetCandidates: Array<{ label: string; code: string; reason: string; lineStart: number; lineEnd: number }> = [];
   let hasSideEffects = false;
 
-  const addSnippet = (label: string, code: string, reason: string): void => {
+  const addSnippet = (label: string, node: ts.Node, reason: string): void => {
+    const code = textOf(sourceFile, node);
     const cleaned = code.split("\n").slice(0, 12).join("\n").trim();
     if (!cleaned) return;
     if (snippetCandidates.some((item) => item.code === cleaned)) return;
-    snippetCandidates.push({ label, code: cleaned, reason });
+    const lineStart = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
+    const lineEnd = sourceFile.getLineAndCharacterOfPosition(node.getEnd()).line + 1;
+    snippetCandidates.push({ label, code: cleaned, reason, lineStart, lineEnd });
   };
 
   function visit(node: ts.Node): void {
@@ -234,26 +237,29 @@ function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<Extraction
         const names = node.parent.parent.name.elements
           .map((element) => element.getText(sourceFile))
           .filter(Boolean);
-        if (names.length) stateSummary.add(names.join(", "));
+        const initialValue = node.arguments[0]?.getText(sourceFile);
+        if (names.length) stateSummary.add(initialValue ? `${names.join(", ")} = ${initialValue}` : names.join(", "));
       }
       if (shortName === "useEffect" || shortName === "useLayoutEffect") {
-        effects.add(shortName);
+        const depsArg = node.arguments[1];
+        const deps = depsArg ? depsArg.getText(sourceFile) : undefined;
+        effects.add(deps ? `${shortName} deps:${deps}` : shortName);
         hasSideEffects = true;
-        addSnippet(shortName, textOf(sourceFile, node.parent), "effect-hook");
+        addSnippet(shortName, node.parent, "effect-hook");
       }
       if (callName.endsWith(".map") || shortName === "map") {
         repeatedBlocks.add("array-map-render");
-        addSnippet("repeated-block", textOf(sourceFile, node.parent), "repeated-rendering");
+        addSnippet("repeated-block", node.parent, "repeated-rendering");
       }
     }
 
     if (ts.isFunctionDeclaration(node) && node.name && /^handle[A-Z]/.test(node.name.text)) {
       eventHandlers.add(node.name.text);
-      addSnippet(node.name.text, textOf(sourceFile, node), "event-handler");
+      addSnippet(node.name.text, node, "event-handler");
     }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && /^handle[A-Z]/.test(node.name.text)) {
       eventHandlers.add(node.name.text);
-      addSnippet(node.name.text, textOf(sourceFile, node.parent?.parent ?? node), "event-handler");
+      addSnippet(node.name.text, node.parent?.parent ?? node, "event-handler");
     }
     if (ts.isJsxAttribute(node)) {
       const attrName = node.name.getText(sourceFile);
@@ -263,7 +269,7 @@ function collectBehaviorAndStructure(sourceFile: ts.SourceFile): Pick<Extraction
     }
     if (ts.isConditionalExpression(node) || (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)) {
       conditionalRenders.add(node.getText(sourceFile).slice(0, 80));
-      addSnippet("conditional", textOf(sourceFile, node), "conditional-render");
+      addSnippet("conditional", node, "conditional-render");
     }
     if (ts.isIdentifier(node) && ["window", "document", "fetch", "localStorage", "sessionStorage"].includes(node.text)) {
       hasSideEffects = true;

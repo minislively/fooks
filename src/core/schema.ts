@@ -47,6 +47,8 @@ export type ExtractionResult = {
     label: string;
     code: string;
     reason: string;
+    lineStart: number;
+    lineEnd: number;
   }>;
   rawText?: string;
   meta: {
