@@ -108,6 +108,9 @@ npm run bench:layer2:billing-import -- \
   --run-id=billing-reconciliation-review
 ```
 
+For mechanics-only local checks, use the synthetic redacted example at
+`benchmarks/layer2-frontend-task/fixtures/billing-import/redacted-openai-dashboard-export.example.json`.
+
 This closes the previous tooling gap around provider billing/cost connection,
 but it does not change public claimability by itself. Reconciliation artifacts
 keep `providerInvoiceOrBillingSavings=false` and

@@ -43,6 +43,15 @@ npm run bench:layer2:billing-import -- \
   --run-id=billing-reconciliation-review
 ```
 
+A synthetic redacted example import is available for local mechanics checks:
+
+```bash
+npm run bench:layer2:billing-import -- \
+  --import=benchmarks/layer2-frontend-task/fixtures/billing-import/redacted-openai-dashboard-export.example.json \
+  --estimated-evidence=.fooks/evidence/provider-cost/<run-id>/evidence.json \
+  --run-id=billing-reconciliation-example
+```
+
 Campaign summaries can be passed with `--summary` or `--provider-cost`:
 
 ```bash

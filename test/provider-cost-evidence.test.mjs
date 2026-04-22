@@ -606,6 +606,32 @@ test("billing import CLI writes reconciliation JSON and Markdown under project-l
   }
 });
 
+test("billing import example fixture reconciles against matching estimated evidence", () => {
+  const fixturePath = path.join(
+    repoRoot,
+    "benchmarks",
+    "layer2-frontend-task",
+    "fixtures",
+    "billing-import",
+    "redacted-openai-dashboard-export.example.json",
+  );
+  const billingImportArtifact = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+  const estimatedEvidence = buildProviderCostEvidence({
+    baselineArtifact: { provider: "openai", model: "gpt-5.4", inputTokens: 100_000, outputTokens: 10_000 },
+    fooksArtifact: { provider: "openai", model: "gpt-5.4", inputTokens: 40_000, outputTokens: 8_000 },
+    pricing: {
+      ...pricing,
+      model: "gpt-5.4",
+    },
+  });
+
+  const reconciliation = buildBillingImportReconciliation({ billingImportArtifact, estimatedEvidence });
+  assert.equal(reconciliation.status, "reconciliation-ready");
+  assert.equal(reconciliation.billingImport.source.redacted, true);
+  assert.equal(reconciliation.claimability.providerInvoiceOrBillingSavings, false);
+  assert.equal(reconciliation.claimability.providerBillingTokenSavings, false);
+});
+
 test("provider cost evidence CLI can read a LiteLLM-shaped pricing catalog", () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-provider-catalog-"));
   try {
