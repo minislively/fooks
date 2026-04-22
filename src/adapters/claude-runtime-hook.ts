@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { decidePreRead } from "./pre-read";
-import { clearClaudeRuntimeSession, initializeClaudeRuntimeSession, markClaudeRuntimeSeenFile, readClaudeRuntimeSession, resolveClaudeRuntimeSessionKey } from "./claude-runtime-session";
+import { clearClaudeRuntimeSession, initializeClaudeRuntimeSession, markClaudeRuntimeSeenFile, resolveClaudeRuntimeSessionKey } from "./claude-runtime-session";
+import { ensureFreshClaudeContextForTarget } from "./claude-runtime-trust";
 import { hasFullReadEscapeHatch, resolvePromptFileContext } from "./prompt-context";
 import type { ContextBudget, ContextMode, PromptSpecificity } from "../core/schema";
 import {
@@ -229,12 +230,11 @@ export function handleClaudeRuntimeHook(input: ClaudeRuntimeHookInput, cwd = pro
     return runtimeDecision;
   }
 
-  const currentMtime = fs.statSync(resolvedTarget).mtimeMs;
-  const priorMtime = readClaudeRuntimeSession(cwd, sessionKey).seenFiles[target]?.lastModifiedAtMs;
-  const refreshed = priorMtime !== undefined && priorMtime !== currentMtime;
-
   const { statePath, seenCount } = markClaudeRuntimeSeenFile(cwd, sessionKey, target);
   const repeatedFile = seenCount >= 2;
+
+  const freshness = repeatedFile ? ensureFreshClaudeContextForTarget(target, cwd) : { refreshed: false };
+  const refreshed = freshness.refreshed;
 
   if (!repeatedFile) {
     const decision: ClaudeRuntimeHookDecision = {
