@@ -402,7 +402,7 @@ async function runSetup(displayCliName: string, cwd = process.cwd()): Promise<Re
 }
 
 function printHelp(displayCliName: string): void {
-  console.log(`Usage: ${displayCliName} <init|setup|run|scan|extract|decide|attach|install|status|codex-pre-read|codex-runtime-hook|claude-runtime-hook>
+  console.log(`Usage: ${displayCliName} <init|setup|run|scan|extract|decide|attach|install|status|doctor|codex-pre-read|codex-runtime-hook|claude-runtime-hook>
 
 Everyday commands:
   ${displayCliName} setup
@@ -421,6 +421,9 @@ Everyday commands:
   ${displayCliName} status codex
   ${displayCliName} status claude
   ${displayCliName} status cache
+  ${displayCliName} doctor
+      Run a comprehensive health check for the Claude adapter, hooks, cache,
+      eligible files, and optional TypeScript language server.
   ${displayCliName} codex-runtime-hook --event <SessionStart|UserPromptSubmit|Stop> [--session-id <id>] [--prompt <text>] [--json]
   ${displayCliName} codex-runtime-hook --native-hook
   ${displayCliName} claude-runtime-hook --event <SessionStart|UserPromptSubmit> [--session-id <id>] [--prompt <text>] [--json]
@@ -693,6 +696,11 @@ async function run(): Promise<void> {
         return;
       }
       throw new Error("install expects 'codex-hooks', 'claude-hooks', or 'opencode-tool'");
+    }
+    case "doctor": {
+      const { runDoctor, printDoctor } = await import("./doctor.js");
+      printDoctor(runDoctor(process.cwd()));
+      return;
     }
     case "status": {
       if (!arg1) {
