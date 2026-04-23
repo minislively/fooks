@@ -174,6 +174,14 @@ function makeTempProject(repositoryUrl = "https://github.com/minislively/temp-pr
   return tempDir;
 }
 
+function makeTempTsJsBetaProject(repositoryUrl = "https://github.com/minislively/temp-ts-js-project.git") {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-ts-js-"));
+  fs.mkdirSync(path.join(tempDir, "src", "lib"), { recursive: true });
+  fs.copyFileSync(path.join(repoRoot, "fixtures", "ts-js-beta", "module-utils.ts"), path.join(tempDir, "src", "lib", "module-utils.ts"));
+  fs.writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ name: "temp-ts-js-project", repository: { url: repositoryUrl } }, null, 2));
+  return tempDir;
+}
+
 function reductionMetrics(filePath) {
   const result = extractFile(path.resolve(filePath));
   const payload = toModelFacingPayload(result, repoRoot);
@@ -1967,8 +1975,38 @@ test("setup reports blocked state for projects without React components", () => 
   assert.ok(result.scope.projectLocal.paths.includes(path.join(setupProjectRoot, ".fooks", "config.json")));
   assert.deepEqual(result.scope.userRuntime.paths, []);
   assert.ok(result.scope.nonGoals.some((item) => item.includes("No interactive setup prompt")));
-  assert.ok(result.blockers.some((item) => item.includes("No React/TSX component file found")));
-  assert.ok(result.nextSteps.some((item) => item.includes("Add a React/TSX component")));
+  assert.ok(result.blockers.some((item) => item.includes("No React/TSX component file or strong TS/JS beta file found")));
+  assert.ok(result.nextSteps.some((item) => item.includes("Add a React/TSX component or a strong same-file TS/JS beta file")));
+});
+
+test("setup can become Codex-ready for TS/JS-only beta projects while Claude and opencode stay React-only", () => {
+  const tempDir = makeTempTsJsBetaProject("https://github.com/example-org/temp-ts-js-project.git");
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-claude-home-"));
+  const env = {
+    FOOKS_ACTIVE_ACCOUNT: "",
+    FOOKS_TARGET_ACCOUNT: "",
+    FOOKS_CODEX_HOME: codexHome,
+    FOOKS_CLAUDE_HOME: claudeHome,
+  };
+
+  const result = run(["setup"], tempDir, env);
+
+  assert.equal(result.ready, true);
+  assert.equal(result.state, "ready");
+  assert.equal(result.runtimes.codex.ready, true);
+  assert.equal(result.runtimes.codex.state, "automatic-ready");
+  assert.equal(result.runtimes.claude.ready, false);
+  assert.equal(result.runtimes.claude.state, "blocked");
+  assert.equal(result.runtimes.opencode.ready, false);
+  assert.equal(result.runtimes.opencode.state, "manual-step-required");
+  assert.equal(fs.existsSync(path.join(tempDir, ".opencode")), false);
+  assert.ok(result.nextSteps.some((item) => item.includes("Codex TS/JS beta file")));
+
+  const codexAttach = result.attach ?? result.runtimes.codex.details?.attach;
+  assert.ok(codexAttach);
+  const manifest = JSON.parse(fs.readFileSync(runtimeManifestPath(codexAttach), "utf8"));
+  assert.deepEqual(manifest.runtimeBridge.scope.extensions, [".tsx", ".jsx", ".ts", ".js"]);
 });
 
 test("cli help advertises setup and package install has no auto hook side effects", () => {
@@ -2085,6 +2123,29 @@ test("doctor codex passes after isolated setup and reports readiness evidence", 
   assert.equal(manifest.evidence.bridgeCommandPlausible, true);
   assert.equal(result.checks.find((item) => item.name === "Codex trust status").status, "pass");
   assert.equal(result.checks.find((item) => item.name === "Eligible source files").status, "pass");
+});
+
+test("doctor codex recognizes TS/JS-only beta setup candidates", () => {
+  const tempDir = makeTempTsJsBetaProject("https://github.com/example-org/temp-ts-js-project.git");
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  const claudeHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-claude-home-"));
+  const env = {
+    FOOKS_ACTIVE_ACCOUNT: "",
+    FOOKS_TARGET_ACCOUNT: "",
+    FOOKS_CODEX_HOME: codexHome,
+    FOOKS_CLAUDE_HOME: claudeHome,
+  };
+
+  const setup = run(["setup"], tempDir, env);
+  assert.equal(setup.ready, true);
+
+  const result = run(["doctor", "codex", "--json"], tempDir, env);
+  const eligible = result.checks.find((item) => item.name === "Eligible source files");
+  assert.equal(result.healthy, true);
+  assert.equal(eligible.status, "pass");
+  assert.match(eligible.message, /strong Codex \.ts\/\.js beta file/);
+  assert.equal(eligible.evidence.componentFileCount, 0);
+  assert.equal(eligible.evidence.codexTsJsBetaFileCount >= 1, true);
 });
 
 test("doctor aggregate treats Claude-only blockers as warnings when Codex is ready", () => {
@@ -3115,6 +3176,41 @@ test("attach codex proves contract and runtime under minislively account context
   assert.equal(status.lifecycleState, "ready");
   assert.ok(status.attachedAt);
   assert.ok(status.lastScanAt);
+});
+
+test("attach claude rejects Codex-only TS/JS beta projects before handoff check", () => {
+  const tempDir = makeTempProject();
+  for (const file of [
+    path.join(tempDir, "src", "components", "SimpleButton.tsx"),
+    path.join(tempDir, "src", "components", "FormSection.tsx"),
+    path.join(tempDir, "src", "components", "DashboardPanel.tsx"),
+    path.join(tempDir, "src", "components", "DateBadge.tsx"),
+  ]) {
+    fs.rmSync(file, { force: true });
+  }
+
+  assert.throws(
+    () => run(["attach", "claude"], tempDir),
+    /attach claude requires a React\/TSX component file for handoff check/,
+  );
+});
+
+test("attach codex can still use a strong TS/JS beta project sample", () => {
+  const tempDir = makeTempProject();
+  for (const file of [
+    path.join(tempDir, "src", "components", "SimpleButton.tsx"),
+    path.join(tempDir, "src", "components", "FormSection.tsx"),
+    path.join(tempDir, "src", "components", "DashboardPanel.tsx"),
+    path.join(tempDir, "src", "components", "DateBadge.tsx"),
+  ]) {
+    fs.rmSync(file, { force: true });
+  }
+
+  const codexHome = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-codex-home-"));
+  const result = run(["attach", "codex"], tempDir, { FOOKS_CODEX_HOME: codexHome });
+  assert.equal(result.runtime, "codex");
+  assert.equal(result.contractProof.passed, true);
+  assert.equal(result.runtimeProof.status, "passed");
 });
 
 test("attach claude can report blocker without failing contract proof", () => {
