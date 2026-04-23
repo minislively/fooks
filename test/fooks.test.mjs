@@ -2995,7 +2995,7 @@ test("docs describe local compare estimates without billing-cost claims", () => 
 ${setup}
 ${release}`;
 
-  assert.match(readme, /Frontend context compression for.*Codex and Claude Code/);
+  assert.match(readme, /Smaller model-facing context for.*Codex/);
   assert.match(combined, /fooks compare src\/components\/Button\.tsx/);
   assert.match(combined, /local model-facing payload estimate|local file-level estimate/);
   assert.match(combined, /TypeScript AST-derived/);
