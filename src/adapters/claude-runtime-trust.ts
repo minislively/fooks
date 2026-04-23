@@ -83,11 +83,15 @@ export function markClaudeReady(cwd = process.cwd()): ClaudeTrustStatus {
 }
 
 export function markClaudeAttachPrepared(activeFile: ClaudeActiveFileContext, cwd = process.cwd()): ClaudeTrustStatus {
+  const previous = readClaudeTrustStatus(cwd);
+  if (previous.activeFile?.filePath === activeFile.filePath && previous.lifecycleState === "attach-prepared") {
+    return previous;
+  }
   return patchClaudeTrustStatus({
     connectionState: "connected",
     lifecycleState: "attach-prepared",
     activeFile,
-    lastAttachPreparedAt: now(),
+    lastAttachPreparedAt: previous.lastAttachPreparedAt ?? now(),
   }, cwd);
 }
 

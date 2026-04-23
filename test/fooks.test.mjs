@@ -2511,10 +2511,15 @@ test("claude trust status non-stale path does not overwrite on repeated file", (
   const target = path.join("src", "components", "FormSection.tsx");
 
   handleClaudeRuntimeHook({ hookEventName: "SessionStart", sessionId }, tempDir);
+
+  // establish lastAttachPreparedAt baseline via first-seen-inject
+  process.env.FOOKS_CLAUDE_FIRST_SEEN_INJECT = "1";
   handleClaudeRuntimeHook({ hookEventName: "UserPromptSubmit", sessionId, prompt: `Review ${target}` }, tempDir);
+  delete process.env.FOOKS_CLAUDE_FIRST_SEEN_INJECT;
 
   const beforeRepeat = readClaudeTrustStatus(tempDir);
   const lastAttachPreparedAt = beforeRepeat.lastAttachPreparedAt;
+  assert.ok(lastAttachPreparedAt, "baseline lastAttachPreparedAt should be set");
 
   const second = handleClaudeRuntimeHook({ hookEventName: "UserPromptSubmit", sessionId, prompt: `Again, review ${target}` }, tempDir);
   assert.equal(second.action, "inject");
