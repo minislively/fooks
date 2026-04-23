@@ -22,3 +22,11 @@ export { handleCodexNativeHookPayload } from "./adapters/codex-native-hook";
 export { installCodexHookPreset } from "./adapters/codex-hook-preset";
 
 export { readCodexTrustStatus } from "./adapters/codex-runtime-trust";
+export { parseWorktreeStatus, summarizeWorktreeStatus, parseAndSummarizeWorktreeStatus } from "./core/worktree-status";
+export type {
+  GitPorcelainStatusCode,
+  ParseWorktreeStatusOptions,
+  WorktreeChangeKind,
+  WorktreeStatusEntry,
+  WorktreeStatusSummary,
+} from "./core/worktree-status";
