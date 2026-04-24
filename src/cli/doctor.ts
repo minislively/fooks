@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { readCodexHookPresetStatus, type CodexHookPresetStatus } from "../adapters/codex-hook-preset";
@@ -328,6 +329,55 @@ function claudeTypeScriptLspCheck(): DoctorCheck {
   };
 }
 
+function worktreeHealthCheck(cwd: string): DoctorCheck {
+  try {
+    const output = execSync("git worktree list --porcelain", { cwd, encoding: "utf8" });
+    const blocks = output.split("\n\n").filter(Boolean);
+    const issues: string[] = [];
+    let deletedCount = 0;
+    let detachedCount = 0;
+
+    for (const block of blocks) {
+      const lines = block.split("\n");
+      const worktreePath = lines.find((l) => l.startsWith("worktree "))?.slice(9);
+      const detached = lines.find((l) => l.startsWith("detached"));
+      if (worktreePath && !fs.existsSync(worktreePath)) {
+        deletedCount++;
+        issues.push(`deleted: ${worktreePath}`);
+      } else if (detached && worktreePath) {
+        detachedCount++;
+        issues.push(`detached HEAD: ${worktreePath}`);
+      }
+    }
+
+    if (issues.length === 0) {
+      return {
+        runtime: "core",
+        name: "Worktree health",
+        status: "pass",
+        message: "All worktrees are healthy",
+        evidence: { worktreeCount: blocks.length },
+      };
+    }
+
+    return {
+      runtime: "core",
+      name: "Worktree health",
+      status: "warn",
+      message: `Found ${issues.length} worktree issue(s): ${issues.join("; ")}`,
+      fix: "Run: git worktree prune && rm -rf <deleted-worktree-path>",
+      evidence: { deletedCount, detachedCount, issues, worktreeCount: blocks.length },
+    };
+  } catch (error) {
+    return {
+      runtime: "core",
+      name: "Worktree health",
+      status: "warn",
+      message: `Unable to check worktree health: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 function codexDoctorChecks(cwd: string, cliName: string): DoctorCheck[] {
   const hooks = readCodexHookPresetStatus(cliName);
   return [
@@ -404,6 +454,7 @@ function aggregateChecks(cwd: string, cliName: string): DoctorCheck[] {
   return [
     ...codexDoctorChecks(cwd, cliName),
     ...claudeDoctorChecks(cwd, false),
+    worktreeHealthCheck(cwd),
   ];
 }
 
