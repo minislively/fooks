@@ -378,6 +378,62 @@ function worktreeHealthCheck(cwd: string): DoctorCheck {
   }
 }
 
+function tmuxSessionHealthCheck(): DoctorCheck {
+  try {
+    const sessionsOutput = execSync("tmux ls 2>/dev/null || true", { encoding: "utf8" });
+    if (!sessionsOutput.trim()) {
+      return {
+        runtime: "core",
+        name: "Tmux session health",
+        status: "pass",
+        message: "No tmux sessions detected",
+        evidence: {},
+      };
+    }
+    const sessions = sessionsOutput.split("\n").filter(Boolean);
+    const zombieSessions: string[] = [];
+
+    for (const sessionLine of sessions) {
+      const sessionName = sessionLine.split(":")[0];
+      if (!sessionName) continue;
+      try {
+        const panePath = execSync(`tmux display-message -t "${sessionName}" -p '#{pane_current_path}' 2>/dev/null`, { encoding: "utf8" }).trim();
+        if (panePath.includes("(deleted)") || (panePath && !fs.existsSync(panePath))) {
+          zombieSessions.push(sessionName);
+        }
+      } catch {
+        // session might be dead or inaccessible
+      }
+    }
+
+    if (zombieSessions.length === 0) {
+      return {
+        runtime: "core",
+        name: "Tmux session health",
+        status: "pass",
+        message: `All ${sessions.length} tmux session(s) are healthy`,
+        evidence: { sessionCount: sessions.length },
+      };
+    }
+
+    return {
+      runtime: "core",
+      name: "Tmux session health",
+      status: "warn",
+      message: `Found ${zombieSessions.length} zombie tmux session(s): ${zombieSessions.join(", ")}`,
+      fix: "Run: tmux kill-session -t <session-name>",
+      evidence: { zombieSessions, sessionCount: sessions.length },
+    };
+  } catch (error) {
+    return {
+      runtime: "core",
+      name: "Tmux session health",
+      status: "warn",
+      message: `Unable to check tmux session health: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
 function codexDoctorChecks(cwd: string, cliName: string): DoctorCheck[] {
   const hooks = readCodexHookPresetStatus(cliName);
   return [
@@ -455,6 +511,7 @@ function aggregateChecks(cwd: string, cliName: string): DoctorCheck[] {
     ...codexDoctorChecks(cwd, cliName),
     ...claudeDoctorChecks(cwd, false),
     worktreeHealthCheck(cwd),
+    tmuxSessionHealthCheck(),
   ];
 }
 
