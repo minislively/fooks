@@ -31,7 +31,7 @@ const {
 const {
   codexRuntimeSessionPath,
 } = require(path.join(repoRoot, "dist", "adapters", "codex-runtime-session.js"));
-const { handleCodexRuntimeHook } = require(path.join(repoRoot, "dist", "adapters", "codex-runtime-hook.js"));
+const { handleCodexRuntimeHook, isEditIntentPrompt } = require(path.join(repoRoot, "dist", "adapters", "codex-runtime-hook.js"));
 const {
   readProjectMetricSummary,
   readSessionMetricSummary,
@@ -981,6 +981,77 @@ test("runtime hook reuses payload only on repeated same-file prompts in one sess
   );
   assert.equal(afterCorruptState.action, "record");
   assert.equal(afterCorruptState.filePath, path.join("fixtures", "compressed", "FormSection.tsx"));
+});
+
+test("edit intent detection includes common exact-file coding verbs used by Codex prompts", () => {
+  for (const prompt of [
+    "Please implement fixtures/compressed/FormSection.tsx",
+    "Rename a prop in fixtures/compressed/FormSection.tsx",
+    "Replace the validation branch in fixtures/compressed/FormSection.tsx",
+    "Adjust fixtures/compressed/FormSection.tsx",
+    "Simplify fixtures/compressed/FormSection.tsx",
+    "Rewrite fixtures/compressed/FormSection.tsx",
+  ]) {
+    assert.equal(isEditIntentPrompt(prompt), true, prompt);
+  }
+
+  for (const prompt of [
+    "Explain fixtures/compressed/FormSection.tsx",
+    "Review only fixtures/compressed/FormSection.tsx",
+    "Summarize fixtures/compressed/FormSection.tsx",
+  ]) {
+    assert.equal(isEditIntentPrompt(prompt), false, prompt);
+  }
+});
+
+test("runtime hook treats implement and rename prompts as safe edit-intent guidance candidates", () => {
+  const target = path.join("fixtures", "compressed", "FormSection.tsx");
+
+  const implementSession = `hook-implement-edit-guidance-${Date.now()}`;
+  handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: implementSession }, repoRoot);
+  handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: implementSession,
+      prompt: `Please implement a new validation path in ${target}`,
+    },
+    repoRoot,
+  );
+  const implementSecond = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: implementSession,
+      prompt: `Again, implement the validation change in ${target}`,
+    },
+    repoRoot,
+  );
+  assert.equal(implementSecond.action, "inject");
+  assert.equal(implementSecond.contextModeReason, "repeated-exact-file-edit-guidance");
+  assert.equal(implementSecond.additionalContext.includes("\"editGuidance\""), true);
+  assert.equal(implementSecond.reasons.includes("edit-guidance-opt-in"), true);
+
+  const renameSession = `hook-rename-edit-guidance-${Date.now()}`;
+  handleCodexRuntimeHook({ hookEventName: "SessionStart", sessionId: renameSession }, repoRoot);
+  handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: renameSession,
+      prompt: `Please rename a prop in ${target}`,
+    },
+    repoRoot,
+  );
+  const renameSecond = handleCodexRuntimeHook(
+    {
+      hookEventName: "UserPromptSubmit",
+      sessionId: renameSession,
+      prompt: `Again, rename the prop in ${target}`,
+    },
+    repoRoot,
+  );
+  assert.equal(renameSecond.action, "inject");
+  assert.equal(renameSecond.contextModeReason, "repeated-exact-file-edit-guidance");
+  assert.equal(renameSecond.additionalContext.includes("\"editGuidance\""), true);
+  assert.equal(renameSecond.reasons.includes("edit-guidance-opt-in"), true);
 });
 
 test("runtime hook gates edit guidance to repeated exact-file edit intent prompts", () => {
@@ -3056,7 +3127,8 @@ test("docs describe local compare estimates without billing-cost claims", () => 
 ${setup}
 ${release}`;
 
-  assert.match(readme, /Frontend context compression for.*Codex and Claude Code/);
+  assert.match(readme, /Smaller model-facing context for repeated same-file work in Codex\./);
+  assert.match(readme, /Claude and opencode are narrower helper paths, not Codex-equivalent automatic optimization\./);
   assert.match(combined, /fooks compare src\/components\/Button\.tsx/);
   assert.match(combined, /local model-facing payload estimate|local file-level estimate/);
   assert.match(combined, /TypeScript AST-derived/);
