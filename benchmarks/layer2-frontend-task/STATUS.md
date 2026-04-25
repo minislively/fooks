@@ -115,12 +115,12 @@ Boundaries:
 | --- | --- | --- |
 | Stable runtime-token/time win | Out of scope for this PR | Applied-code validation plus a multi-task or larger repeated-run class. |
 | Provider billing-token savings | Out of scope for this PR | Provider billing-token telemetry, not local prompt-size accounting. |
-| Applied-code quality benchmark | Gate implemented; live matched evidence pending | Run `run-r4-applied.js` for matched vanilla/fooks attempts and require `validate-r4-applied.js` to pass on generated outputs, plus target-project build/test commands when available. |
+| Applied-code quality benchmark | Gate implemented; live matched evidence insufficient/negative | Existing live matched diagnostics attempted 7 pairs with 4 accepted, then a 0/3 risk-closure rerun; next proof requires a fresh bounded repeated applied run with enough accepted matched pairs, not stronger wording from current artifacts. |
 
 ## 7. Next execution path
 
 ```bash
-# Optional stronger claim path: applied-code validation or multi-task run class
+# Historical proposal-only smoke path; useful only for runner viability, not applied-code claims
 node benchmarks/layer2-frontend-task/runner.js \
   --mode=vanilla \
   --target=shadcn-ui/apps/v4/registry/bases/radix/examples/combobox-example.tsx \
@@ -143,6 +143,17 @@ node benchmarks/layer2-frontend-task/run-r4-applied.js \
   --mode=fooks \
   --target=<local combobox-example.tsx> \
   --output=benchmarks/layer2-frontend-task/results/R4-fooks-applied-run.json \
+  --keep-workdir
+
+# Current stronger-evidence path: bounded repeated applied-code diagnostic
+node benchmarks/layer2-frontend-task/run-r4-repeated.js \
+  --target=<local combobox-example.tsx> \
+  --required-accepted=5 \
+  --max-pairs=8 \
+  --provider=codex \
+  --model="${CODEX_MODEL:-gpt-5.4-mini}" \
+  --timeoutMs=300000 \
+  --run-id=runtime-r4-rerun-YYYYMMDD \
   --keep-workdir
 ```
 
@@ -169,6 +180,6 @@ Forbidden until applied-code validation and multi-task/statistical evidence exis
 - ❌ `billing-grade savings`
 - ❌ `applied-code benchmark passed` (until live generated vanilla/fooks candidate trees pass the acceptance gate)
 
-*Status date: 2026-04-21*
+*Status date: 2026-04-25*
 *Runner: ✅ tiny + R4 paired smokes passed*
 *Benchmark: ✅ proposal-only smoke validated; stable runtime claims out of scope*
