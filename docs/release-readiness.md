@@ -5,7 +5,7 @@ Branch: `chore/release-readiness-20260425-0000`
 Package: `fxxk-frontned-hooks`
 Installed CLI: `fooks`
 
-This snapshot records the current pre-public release posture after the #172/#174 cleanup pass. It is intentionally evidence-scoped: it records local checks and remaining authority gates, not a publication decision.
+This snapshot records the current pre-public release posture after the #172 LSP boundary cleanup and the separate #174 rejection/cleanup pass. It is intentionally evidence-scoped: it records local checks and remaining authority gates, not a publication decision.
 
 ## Inputs inspected
 
