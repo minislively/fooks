@@ -10,7 +10,7 @@
 | Layer 2: Task Definition/Spec | Frontend task inventory and R4 spec | ✅ Complete | Task inventory, R4 spec, validation checklist, metric schema are ready. |
 | Layer 2: Runner Path | AI runner wrapper execution path | ✅ Unblocked | Current `codex exec` wrapper completed tiny and R4 paired read-only smokes. |
 | Layer 2: R4 Paired Smoke | Vanilla-vs-fooks proposal-only R4 execution | ✅ Collected | Two matched pairs succeeded on `combobox-example.tsx`; summaries stored under `results/R4-current-exec-smoke-2026-04-21*.json`. |
-| Layer 2: Repeated Applied Diagnostic | Matched vanilla/fooks applied-code repeated run | ⚠️ Diagnostic only | 2026-04-22 pre-launch run attempted 7 pairs, accepted 4/7, and classified `insufficient-accepted-pairs`; a same-day risk-closure rerun stopped after 0/3 accepted pairs. |
+| Layer 2: Repeated Applied Diagnostic | Matched vanilla/fooks applied-code repeated run | ⚠️ Diagnostic only | 2026-04-22 diagnostics were insufficient/negative; the 2026-04-25 bounded rerun attempted 7 pairs, accepted 5/7, and still classified `diagnostic-only` with stable claimability false. |
 | Layer 2: Applied-Code Acceptance Gate | Validate generated file trees after they are written to disk | ✅ Implemented | `validate-r4-applied.js` checks required files, line limits, barrel exports, source hygiene, local import cycles, and TypeScript acceptance; a fixture self-test artifact exists. |
 
 ## 2. Canonical wording
@@ -23,6 +23,7 @@
 > A 2026-04-22 repeated applied diagnostic attempted 7 matched pairs, accepted 4/7, and classified `insufficient-accepted-pairs`.
 > Accepted pairs kept prompt-size reduction (median 88.2%) but regressed on CLI runtime tokens (median -25.5%) and latency (median -14.4%).
 > A same-day risk-closure rerun after claim-boundary hardening stopped after 3 matched attempts because 0/3 pairs passed acceptance in both modes; it also classified `insufficient-accepted-pairs`.
+> A 2026-04-25 bounded rerun attempted 7 matched pairs, accepted 5/7, and showed positive accepted-pair medians (prompt 86.4%, CLI runtime tokens 22.4%, latency 8.3%), but remained `diagnostic-only` because the candidate threshold was not met and one severe runtime-token regression remained.
 > This is **not** provider billing telemetry, not an applied-code benchmark win, and not enough for stable runtime-token/time win claims.
 
 ## 3. Completed assets
@@ -42,6 +43,7 @@
 | R4 applied validator self-test | ✅ Passed | `results/R4-applied-acceptance-validator-self-test-2026-04-21.json` proves the gate can pass/fail concrete file trees without provider telemetry claims. |
 | R4 2026-04-22 pre-launch diagnostic | ⚠️ Insufficient | Attempted 7 pairs; accepted 4/7; prompt median 88.2% smaller; runtime-token median -25.5%; latency median -14.4%. |
 | R4 2026-04-22 risk-closure rerun | ⚠️ Insufficient | Stopped after 3 matched attempts; accepted 0/3 pairs, so no accepted-pair runtime-token or latency medians were available. |
+| R4 2026-04-25 bounded rerun | ⚠️ Diagnostic only | Attempted 7 pairs; accepted 5/7; prompt median 86.4% smaller; CLI runtime-token median 22.4% lower; latency median 8.3% lower; one severe runtime-token regression kept stable claimability false. |
 
 ## 4. 2026-04-21 tiny runner smoke
 
@@ -113,9 +115,9 @@ Boundaries:
 
 | Claim/risk | Status | What would be required |
 | --- | --- | --- |
-| Stable runtime-token/time win | Out of scope for this PR | Applied-code validation plus a multi-task or larger repeated-run class. |
+| Stable runtime-token/time win | Out of scope for this PR | Multi-task or larger repeated-run evidence with accepted matched pairs, positive medians, no severe runtime-token regressions, and stable setup identity. |
 | Provider billing-token savings | Out of scope for this PR | Provider billing-token telemetry, not local prompt-size accounting. |
-| Applied-code quality benchmark | Gate implemented; live matched evidence insufficient/negative | Existing live matched diagnostics attempted 7 pairs with 4 accepted, then a 0/3 risk-closure rerun; next proof requires a fresh bounded repeated applied run with enough accepted matched pairs, not stronger wording from current artifacts. |
+| Applied-code quality benchmark | Gate implemented; latest live matched evidence diagnostic-only | Existing live matched diagnostics include 4/7 accepted, 0/3 accepted, and the 2026-04-25 bounded 5/7 accepted rerun; next proof requires broader/stable repeated applied evidence without severe regressions, not stronger wording from current artifacts. |
 
 ## 7. Next execution path
 
@@ -182,4 +184,4 @@ Forbidden until applied-code validation and multi-task/statistical evidence exis
 
 *Status date: 2026-04-25*
 *Runner: ✅ tiny + R4 paired smokes passed*
-*Benchmark: ✅ proposal-only smoke validated; stable runtime claims out of scope*
+*Benchmark: ✅ proposal-only smoke validated; 2026-04-25 applied rerun diagnostic-only; stable runtime claims out of scope*
