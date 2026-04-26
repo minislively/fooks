@@ -3651,7 +3651,7 @@ ${release}`;
   assert.doesNotMatch(combined, /automatic Claude Read\/tool interception/i);
 });
 
-test("docs and pre-read boundary keep React Native and WebView unsupported", () => {
+test("docs and frontend domain contract keep React Native and WebView unsupported", () => {
   const readme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
   const roadmap = fs.readFileSync(path.join(repoRoot, "docs", "roadmap.md"), "utf8");
   const release = fs.readFileSync(path.join(repoRoot, "docs", "release.md"), "utf8");
@@ -3660,8 +3660,9 @@ test("docs and pre-read boundary keep React Native and WebView unsupported", () 
   const architecture = fs.readFileSync(path.join(repoRoot, "docs", "rn-webview-architecture.md"), "utf8");
   const domainProfiles = fs.readFileSync(path.join(repoRoot, "docs", "frontend-domain-profiles.md"), "utf8");
   const fixtureExpectations = fs.readFileSync(path.join(repoRoot, "docs", "frontend-domain-fixture-expectations.md"), "utf8");
+  const domainContract = fs.readFileSync(path.join(repoRoot, "docs", "frontend-domain-contract.md"), "utf8");
   const preRead = fs.readFileSync(path.join(repoRoot, "src", "adapters", "pre-read.ts"), "utf8");
-  const combined = `${readme}\n${roadmap}\n${release}\n${taxonomy}\n${candidates}\n${architecture}\n${domainProfiles}\n${fixtureExpectations}`;
+  const combined = `${readme}\n${roadmap}\n${release}\n${taxonomy}\n${candidates}\n${architecture}\n${domainProfiles}\n${fixtureExpectations}\n${domainContract}`;
 
   assert.match(combined, /React Native(?:\/WebView| and embedded WebView| \/ embedded WebView)/);
   assert.match(combined, /TSX parsing is (?:syntax-level|only syntax-level)|\.tsx` parse is not semantic evidence/);
@@ -3674,8 +3675,31 @@ test("docs and pre-read boundary keep React Native and WebView unsupported", () 
   assert.match(domainProfiles, /unsupported-react-native-webview-boundary/);
   assert.match(domainProfiles, /WebView boundary profile/);
   assert.match(domainProfiles, /TUI\/Ink candidate profile/);
+  assert.match(domainProfiles, /Frontend domain contract/);
   assert.match(domainProfiles, /Frontend domain fixture expectations/);
+  assert.match(domainContract, /Frontend domain contract/);
+  assert.match(domainContract, /frontend domain contract -> fixture expectation manifest -> domain detector -> profile implementation/);
+  assert.match(domainContract, /existing fixture expectation baseline .* remains the manifest gate/is);
+  assert.match(domainContract, /does not imply, require, or perform a manifest schema migration/i);
+  assert.match(domainContract, /React Web/);
+  assert.match(domainContract, /React Native/);
+  assert.match(domainContract, /WebView/);
+  assert.match(domainContract, /TUI\/Ink/);
+  assert.match(domainContract, /Mixed/);
+  assert.match(domainContract, /Unknown/);
+  assert.match(domainContract, /`extract`/);
+  assert.match(domainContract, /`fallback`/);
+  assert.match(domainContract, /`deferred`/);
+  assert.match(domainContract, /Fallback-first/i);
+  assert.match(domainContract, /Bridge, message, source, sandbox, and compact-payload behavior require a later reviewed plan/);
+  assert.match(domainContract, /No React Native support claim from TSX parsing or fixture evidence alone/);
+  assert.match(domainContract, /No broad TUI support claim and no default TUI compact extraction claim/);
+  assert.match(domainContract, /Mixed risky markers choose fallback or unsupported before extraction/);
+  assert.match(domainContract, /Unknown files do not receive compact extraction just because TSX\/JSX parsing succeeds/);
+  assert.match(domainContract, /Shard triggers/);
+  assert.match(domainContract, /Next detector\/profile gate/);
   assert.match(fixtureExpectations, /selected\/deferred fixture baseline|Selected fixture expectations/);
+  assert.match(fixtureExpectations, /manifest remains the gate .* does not require a schema migration/is);
   assert.match(fixtureExpectations, /public repository candidates .* reference-only/is);
   assert.match(fixtureExpectations, /WebView compact-payload reuse or bridge safety promotion/);
   assert.match(candidates, /React Native \/ WebView fixture candidate survey/);
