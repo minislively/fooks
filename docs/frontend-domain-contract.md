@@ -1,98 +1,63 @@
 # Frontend domain contract
 
-This contract is the final pre-detector gate for frontend-family domain work. It does **not** add runtime support, parser behavior, extractor behavior, setup eligibility, or public support wording. It defines the language fooks uses before any later domain detector or profile implementation PR.
+Issue #198 locks the frontend-domain contract before any detector or profile promotion. This document is a docs/process and regression-test gate only: it does not add extractor behavior, detector behavior, setup eligibility, runtime behavior, CLI behavior, public support wording, manifest schema migration, or domain sharding.
 
-The intended sequence is:
+## Contract status
 
-```text
-frontend domain contract -> fixture expectation manifest -> domain detector -> profile implementation
-```
-
-The existing fixture expectation baseline in `test/fixtures/frontend-domain-expectations/manifest.json` remains the manifest gate between this contract and later detector/profile work. This contract does not imply, require, or perform a manifest schema migration.
+- **Current supported lane remains React Web only** for the measured same-file TSX/JSX scope already covered by existing docs and tests.
+- **React Native, WebView, and TUI/Ink are evidence lanes**, not product/runtime support claims.
+- **WebView is fallback-first.** WebView boundary signals must keep normal source reading unless a later gate explicitly approves a narrower detector/profile promotion.
+- **Mixed and Unknown classifications are safety states.** They prevent ambiguous syntax evidence from becoming semantic support.
 
 ## Domain taxonomy
 
-| Domain | Contract meaning | Default stance before promotion | Public wording boundary |
+| Domain | Classification rule | Current contract outcome | Claim boundary |
 | --- | --- | --- | --- |
-| React Web | DOM-ish React `.tsx` / `.jsx` with web JSX, form/control elements, handlers, props, `className`, style, and current measured extraction patterns. | `extract` only for the already measured React web path and protected regressions. | May describe current measured React web extraction scope; do not generalize to all frontend frameworks. |
-| React Native | React components with `react-native` primitives such as `View`, `Text`, `TextInput`, `Pressable`, `Touchable*`, `FlatList`, `StyleSheet.create`, platform, or navigation signals. | Evidence lane, deferred lane, or fallback-first until a later RN profile plan proves exact scope. | No React Native support claim from TSX parsing or fixture evidence alone. |
-| WebView | Embedded WebView / bridge surfaces such as `react-native-webview`, `source`, injected JavaScript, `onMessage`, URL/HTML sources, or native/web message boundaries. | Fallback-first. Bridge, message, source, sandbox, and compact-payload behavior require a later reviewed plan. | No WebView support claim, no WebView compact-payload reuse claim, and no bridge/message safety claim. |
-| TUI/Ink | React CLI / Ink-like TSX evidence with terminal layout, text, prompt, status, keyboard/input, or command-view signals. | Evidence lane only. TSX extraction evidence for local fixtures is not broad terminal UI semantics. | No broad TUI support claim and no default TUI compact extraction claim. |
-| Mixed | Files with overlapping risky markers, such as RN plus WebView, web plus native, CLI plus runtime/process side effects, or other cross-domain ambiguity. | Fallback or unsupported boundary unless a later plan gives an exact measured rule. | Must not be used to promote any single domain support claim. |
-| Unknown | Files without enough stable domain signals or with source shapes outside the measured frontend-family contract. | Deferred or fallback. Unknown does not default to extraction. | No support wording beyond “not current support,” “deferred,” or “normal source reading.” |
+| React Web | DOM-oriented React/TSX evidence such as forms, DOM JSX elements, `className`, and browser event handlers, without stronger RN/WebView/TUI boundary signals. | Eligible for the existing measured React Web extraction path when current extractor and readiness rules allow it. | This is the only current frontend support lane. |
+| React Native | `react-native` imports, RN primitives such as `View`, `Text`, `TextInput`, `Pressable`, `Touchable*`, `FlatList`, or platform/navigation/style signals. | Evidence lane; fallback when current pre-read boundary markers apply. | Syntax evidence is not a React Native support claim and must not be treated as DOM/form semantics. |
+| WebView | `react-native-webview`, `<WebView>`, `source`, injected JavaScript, `onMessage`, or native/web bridge markers. | **Fallback-first** boundary lane. | No WebView support claim, no bridge-safety claim, and no compact-payload reuse claim. |
+| TUI-Ink | Ink/React CLI TSX evidence such as Ink-like imports, `Box`, `Text`, `useInput`, terminal layout, or command-palette style components. | Evidence lane only; current fixture evidence may prove TSX parsing/extraction for measured local files. | TUI/Ink evidence is not broad TUI support and not terminal correctness support. |
+| Mixed | Multiple domain signals in one file or fixture, especially combinations of React Web with RN/WebView/TUI or RN with WebView bridge markers. | Conservative boundary classification; fallback or defer according to the strongest safety signal. | Mixed evidence cannot be promoted by choosing the most convenient domain. |
+| Unknown | TSX/JSX/TS/JS where domain signals are absent, weak, or unclassified. | Defer semantic profile claims; use existing generic behavior only when normal eligibility rules allow it. | Unknown is not implicit React Web, RN, WebView, or TUI support. |
 
-## Outcome vocabulary
+## Outcome meanings
 
-| Outcome | Meaning | Boundary |
+| Outcome | Meaning | What it does not mean |
 | --- | --- | --- |
-| `extract` | fooks may produce a compact/model-facing extraction for the measured scope named by the fixture/profile. | `extract` is scoped evidence, not universal support for the domain label. |
-| `fallback` | fooks should keep normal source reading or a full-source path because compact extraction would be unsafe or under-evidenced. | Fallback is the safe default for WebView, Mixed, Unknown, and risky native boundaries. |
-| `deferred` | The lane is intentionally not assigned an exact behavior until fixtures, rules, and wording boundaries are ready. | Deferred work must not be described as support. |
-| `unsupported` | An explicit boundary where fooks should not present compact extraction or support wording for the file/lane. | Use only when a testable reason is documented. |
+| `extract` | The current extractor may produce a compact/model-facing payload under the existing implementation and readiness rules for a measured fixture or supported lane. | It does not promote a new domain profile, detector, setup claim, runtime claim, or public support promise. |
+| `fallback` | The file should use normal source reading/full-source behavior instead of compact payload reuse, usually because a safety boundary or unsupported-domain marker is present. | It is not a failed test and not a request to infer semantics from syntax alone. |
+| `deferred` | The lane, fixture, or semantic profile is intentionally postponed until a future plan documents fixtures, pass/fail rules, fallback rules, and wording boundaries. | It does not block the current React Web path and does not authorize implementation by implication. |
 
-## Detection contract, not implementation
+## WebView fallback-first rule
 
-A future detector may use signals such as imports, JSX tags, source props, handlers, and file patterns, but this PR does not implement that detector. The contract-level intent is:
+WebView files are boundary files before they are extraction candidates. `react-native-webview`, `<WebView>`, `source`, injected JavaScript, `onMessage`, HTML strings, or native/web bridge markers require the fallback-first posture. Any future compact-payload reuse for WebView must first pass a separate security and boundary review and must name the exact measured scope.
 
-1. WebView markers outrank broad JSX extractability and stay fallback-first.
-2. React Native markers are RN evidence, not DOM/form semantics.
-3. TUI/Ink markers are CLI evidence, not arbitrary terminal UI support.
-4. Mixed risky markers choose fallback or unsupported before extraction.
-5. Unknown files do not receive compact extraction just because TSX/JSX parsing succeeds.
-6. React Web extraction stays bounded to current measured React web signals.
+## RN and TUI evidence-lane rule
 
-## Public claim boundaries
+React Native and TUI/Ink fixtures may be useful evidence for syntax traversal, fixture shape, and future domain-signal design. They are **not support claims**. RN primitives must not be reinterpreted as DOM controls or React Web form semantics. TUI/Ink fixtures must not be generalized into arbitrary terminal UI support, terminal behavior correctness, or runtime-token savings.
 
-Allowed wording for pre-promotion work:
+## Fixture manifest pre-detector/profile gate
 
-- “evidence lane”
-- “deferred lane”
-- “fallback-first”
-- “not current support”
-- “normal source reading”
-- “experimental candidate” only after a separate implementation plan approves exact scope
+The fixture expectation manifest at `test/fixtures/frontend-domain-expectations/manifest.json` is the pre-detector/profile gate for this lane. Before any detector or profile promotion, a candidate change must keep the manifest and docs aligned on:
 
-Forbidden positive claim categories before a later reviewed implementation plan:
+1. one domain lane per selected fixture;
+2. one expected outcome per fixture: `extract`, `fallback`, or `deferred`/unsupported wording;
+3. local or synthetic-local fixture sources only for the first pass;
+4. explicit fallback reasons for RN/WebView boundary fixtures;
+5. forbidden support claims for RN, WebView, and TUI/Ink evidence lanes;
+6. deferred entries for fixture categories that are visible but not yet safe to promote.
 
-- A claim that React Native is available or currently supported.
-- A claim that WebView is available or currently supported.
-- A claim that WebView compact-payload reuse is currently supported.
-- A claim that broad TUI or TUI/Ink behavior is available or currently supported.
-- A claim that WebView compact extraction is on by default.
-- A claim that TUI compact extraction is on by default.
+This issue does not migrate the manifest schema. The current schema remains the contract surface for regression tests.
 
-Safe negative wording remains allowed, for example: “no default WebView compact payload reuse.”
+## Next detector/profile promotion gate
 
-## Fixture expectation manifest gate
+The next detector/profile PR may start only after this contract is green in docs and tests. That later PR must be explicitly scoped and must include, before source behavior changes:
 
-The fixture expectation manifest is the gate between this contract and detector/profile work. A later detector/profile plan should not start from the taxonomy alone; it should reference manifest entries that state:
+- fixture-backed domain classification rules for React Web, React Native, WebView, TUI-Ink, Mixed, and Unknown;
+- pass/fail expectations for each promoted fixture;
+- fallback rules that keep WebView boundary cases fallback-first unless specifically approved;
+- wording boundaries that avoid RN/WebView/TUI support claims beyond measured evidence;
+- regression coverage proving the manifest remains a pre-detector/profile gate;
+- a stated non-goal for package/lockfile changes, setup/CLI changes, runtime/pre-read broadening, manifest schema migration, and domain sharding unless a separate issue explicitly opens one of those lanes.
 
-- fixture path and source kind;
-- domain/lane and required signals;
-- exact expected outcome: `extract`, `fallback`, `deferred`, or `unsupported`;
-- boundary reason when fallback or unsupported is expected;
-- claim boundary for public wording.
-
-This contract does not migrate the manifest schema. If the current manifest becomes too hard to review, a separate plan should propose a schema or shard migration.
-
-## Shard triggers
-
-Keep the central contract and manifest structure until at least one trigger is observed:
-
-1. The central manifest or contract becomes too large for reviewers to isolate domain-specific changes.
-2. Repeated merge conflicts occur in central domain expectation files.
-3. WebView bridge/security boundary work needs ownership separate from RN, TUI, and React Web lanes.
-4. A coordinated parallel implementation is approved across RN, WebView, TUI/Ink, and React Web lanes.
-5. A domain is promoted to experimental detector/profile work with enough tests to justify separate ownership.
-
-Documenting these triggers does not perform sharding.
-
-## Next detector/profile gate
-
-The next implementation-oriented lane may be planned only after this contract and the fixture expectation manifest remain green under regression tests. That later detector/profile plan must name:
-
-- the exact domain and fixture IDs it affects;
-- detector signals and precedence rules;
-- fallback/unsupported behavior for mixed and risky files;
-- public wording allowed for the measured scope;
-- verification commands proving no RN/WebView/TUI broad support claim was introduced.
+Promotion stops at the first failed gate. Until that later gate passes, this contract is documentation and regression protection only.
