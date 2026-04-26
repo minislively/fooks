@@ -23,7 +23,7 @@
 > A 2026-04-22 repeated applied diagnostic attempted 7 matched pairs, accepted 4/7, and classified `insufficient-accepted-pairs`.
 > Accepted pairs kept prompt-size reduction (median 88.2%) but regressed on CLI runtime tokens (median -25.5%) and latency (median -14.4%).
 > A same-day risk-closure rerun after claim-boundary hardening stopped after 3 matched attempts because 0/3 pairs passed acceptance in both modes; it also classified `insufficient-accepted-pairs`.
-> This is **not** provider billing telemetry, not an applied-code benchmark win, and not enough for stable runtime-token/time win claims.
+> This is **not** provider usage/billing telemetry, not an applied-code benchmark win, and not enough for stable runtime-token/time win claims.
 
 ## 3. Completed assets
 
@@ -105,7 +105,7 @@ Validated smoke checks:
 Boundaries:
 
 - The runner is read-only and asks for proposed file trees/code skeletons only.
-- `promptTokensApprox` is local prompt-size accounting, not provider billing telemetry.
+- `promptTokensApprox` is local prompt-size accounting, not provider usage/billing telemetry.
 - These are two proposal-only pairs, so they still do not override the older unstable direct-runtime follow-up.
 - Generated code was not applied and acceptance-tested; do not publish this as a stable Layer 2 win.
 
