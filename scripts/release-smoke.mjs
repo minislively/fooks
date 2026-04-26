@@ -32,7 +32,7 @@ function parsePackJson(stdout) {
 
 function assertNoForbiddenPublicClaims(label, text) {
   const forbidden = [
-    /provider usage/billing-token reduction/i,
+    /provider usage\/billing-token reduction/i,
     /billing-token savings/i,
     /provider cost savings/i,
     /Claude Read interception is enabled/i,
@@ -50,7 +50,7 @@ function assertNoForbiddenPublicClaims(label, text) {
       }
     }
     if (/ccusage replacement/i.test(line)) {
-      assert(/not (?:a )?ccusage replacement|not provider usage/billing tokens, charged costs, or a ccusage replacement/i.test(line), `${label} contains unbounded ccusage replacement wording: ${line}`);
+      assert(/not (?:a )?ccusage replacement|not provider usage\/billing tokens, invoices, dashboards, charged costs, or a ccusage replacement/i.test(line), `${label} contains unbounded ccusage replacement wording: ${line}`);
     }
     if (/\.omx\//i.test(line) || /\.omx\/state/i.test(line)) {
       assert(/internal|harness|planning/i.test(line), `${label} exposes .omx as product state: ${line}`);
@@ -322,7 +322,7 @@ const compare = JSON.parse(compareStdout);
 assert(compare.metricTier === "estimated", `compare should expose estimated metric tier, got ${compare.metricTier}`);
 assert(compare.measurement === "local-model-facing-payload", `unexpected compare measurement ${compare.measurement}`);
 assert(compare.claimBoundary?.includes("not provider usage/billing tokens"), "compare should keep provider billing boundary");
-assert(compare.claimBoundary?.includes("not charged costs"), "compare should keep provider cost boundary");
+assert(/not provider usage\/billing tokens, invoices, dashboards, charged costs|not provider invoice\/dashboard\/charged-cost proof/.test(compare.claimBoundary ?? ""), "compare should keep provider cost boundary");
 assert(compare.excludes?.includes("provider-tokenizer-behavior"), "compare should exclude provider tokenizer behavior");
 assert(compare.excludes?.includes("runtime-hook-envelope-overhead"), "compare should exclude runtime hook envelope overhead");
 assert(compare.sourceBytes > compare.modelFacingBytes, "release compare fixture should show a local payload reduction");

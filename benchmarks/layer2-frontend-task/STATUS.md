@@ -24,7 +24,7 @@
 > Accepted pairs kept prompt-size reduction (median 88.2%) but regressed on CLI runtime tokens (median -25.5%) and latency (median -14.4%).
 > A same-day risk-closure rerun after claim-boundary hardening stopped after 3 matched attempts because 0/3 pairs passed acceptance in both modes; it also classified `insufficient-accepted-pairs`.
 > A 2026-04-25 bounded rerun attempted 7 matched pairs, accepted 5/7, and showed positive accepted-pair medians (prompt 86.4%, CLI runtime tokens 22.4%, latency 8.3%), but remained `diagnostic-only` because the candidate threshold was not met and one severe runtime-token regression remained.
-> This is **not** provider billing telemetry, not an applied-code benchmark win, and not enough for stable runtime-token/time win claims.
+> This is **not** provider usage/billing telemetry, not an applied-code benchmark win, and not enough for stable runtime-token/time win claims.
 
 ## 3. Completed assets
 

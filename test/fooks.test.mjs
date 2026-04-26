@@ -3658,8 +3658,9 @@ test("docs and pre-read boundary keep React Native and WebView unsupported", () 
   const taxonomy = fs.readFileSync(path.join(repoRoot, "docs", "frontend-scope-taxonomy.md"), "utf8");
   const candidates = fs.readFileSync(path.join(repoRoot, "docs", "rn-webview-fixture-candidates.md"), "utf8");
   const architecture = fs.readFileSync(path.join(repoRoot, "docs", "rn-webview-architecture.md"), "utf8");
+  const domainProfiles = fs.readFileSync(path.join(repoRoot, "docs", "frontend-domain-profiles.md"), "utf8");
   const preRead = fs.readFileSync(path.join(repoRoot, "src", "adapters", "pre-read.ts"), "utf8");
-  const combined = `${readme}\n${roadmap}\n${release}\n${taxonomy}\n${candidates}\n${architecture}`;
+  const combined = `${readme}\n${roadmap}\n${release}\n${taxonomy}\n${candidates}\n${architecture}\n${domainProfiles}`;
 
   assert.match(combined, /React Native(?:\/WebView| and embedded WebView| \/ embedded WebView)/);
   assert.match(combined, /TSX parsing is (?:syntax-level|only syntax-level)|\.tsx` parse is not semantic evidence/);
@@ -3667,11 +3668,16 @@ test("docs and pre-read boundary keep React Native and WebView unsupported", () 
   assert.match(combined, /React Native \/ WebView promotion ladder/);
   assert.match(roadmap, /React Native \/ WebView fixture candidate survey/);
   assert.match(roadmap, /React Native \/ WebView architecture direction/);
+  assert.match(roadmap, /Frontend domain profile roadmap/);
   assert.match(candidates, /React Native \/ WebView fixture candidate survey/);
   assert.match(candidates, /React Native \/ WebView architecture direction/);
   assert.match(architecture, /shared TypeScript AST core, separate domain signal profiles/);
   assert.match(architecture, /WebView boundary\/fallback profile/);
   assert.match(architecture, /TUI\/CLI profile candidate/);
+  assert.match(domainProfiles, /Layer 0 — boundary and eligibility policy/);
+  assert.match(domainProfiles, /unsupported-react-native-webview-boundary/);
+  assert.match(domainProfiles, /WebView boundary profile/);
+  assert.match(domainProfiles, /TUI\/Ink candidate profile/);
   assert.match(candidates, /Tier A: preferred seed candidates/);
   assert.match(candidates, /Recommended first fixture slice/);
   assert.match(candidates, /react-native-webview\/react-native-webview/);
