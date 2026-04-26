@@ -727,6 +727,10 @@ test("design-review metadata covers planned fixture categories conservatively", 
   );
   assert.ok(tailwind.styleReferences.some((item) => item.kind === "tailwind-group"));
   assert.ok(tailwind.visualRegions.some((item) => item.label === "section" || item.label === "TailwindVariantCard"));
+  assert.ok(
+    tailwind.visualRegions.filter((item) => item.kind === "unknown").length <= 1,
+    "TailwindVariantCard design metadata should classify text content regions instead of leaving noisy unknown visual regions",
+  );
 
   const form = deriveDesignReviewMetadata(extractFile(designReviewFixture("FormStateReview.tsx")));
   assert.ok(form);
@@ -2567,6 +2571,7 @@ test("cli help advertises setup and package install has no auto hook side effect
   assert.match(help, /fooks doctor \[codex\|claude\] \[--json\]/);
   assert.match(help, /fooks compare <file> \[--json\]/);
   assert.match(help, /fooks status claude/);
+  assert.match(help, /fooks status artifacts/);
   assert.match(help, /Codex: automatic repeated-file runtime hook path/);
   assert.match(help, /Claude: project-local context hooks/);
   assert.match(help, /opencode: manual\/semi-automatic custom tool/);
@@ -2588,6 +2593,27 @@ test("cli help advertises setup and package install has no auto hook side effect
   assert.equal(pkg.scripts?.prepare, undefined);
   assert.match(pkg.scripts?.["release:smoke"], /scripts\/release-smoke\.mjs/);
   assert.doesNotMatch(pkg.scripts?.["release:smoke"], /publish|version|tag/);
+});
+
+test("status artifacts route reports read-only audit JSON", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-status-artifacts-"));
+  const before = fileSnapshot(tempDir);
+
+  const result = run(["status", "artifacts"], tempDir);
+
+  assert.equal(result.command, "status artifacts");
+  assert.equal(result.scope, "fooks");
+  assert.match(result.claimBoundary, /never deletes/);
+  assert.ok(Array.isArray(result.manualCleanupCommands));
+  assert.deepEqual(fileSnapshot(tempDir), before);
+
+  let output = "";
+  try {
+    runText(["status", "unknown"], tempDir);
+  } catch (error) {
+    output = `${error.stdout ?? ""}${error.stderr ?? ""}`;
+  }
+  assert.match(output, /artifacts/);
 });
 
 test("doctor rejects unknown targets and exposes bounded command help", () => {
@@ -3587,6 +3613,9 @@ test("package release surface keeps internal docs out of the npm tarball", () =>
   assert.ok(pkg.files.includes("dist"));
   assert.ok(pkg.files.includes("docs/setup.md"));
   assert.ok(pkg.files.includes("docs/release.md"));
+  assert.ok(pkg.files.includes("docs/rn-webview-architecture.md"));
+  assert.equal(pkg.files.includes("docs/rn-webview-fixture-candidates.md"), false);
+  assert.equal(pkg.files.includes("docs/tui-fixture-candidates.md"), false);
   assert.equal(pkg.files.includes("docs"), false);
   assert.equal(pkg.files.some((entry) => entry.startsWith("docs/internal")), false);
   assert.equal(pkg.files.some((entry) => entry.startsWith("benchmarks")), false);
@@ -3628,21 +3657,21 @@ test("docs and pre-read boundary keep React Native and WebView unsupported", () 
   const release = fs.readFileSync(path.join(repoRoot, "docs", "release.md"), "utf8");
   const taxonomy = fs.readFileSync(path.join(repoRoot, "docs", "frontend-scope-taxonomy.md"), "utf8");
   const candidates = fs.readFileSync(path.join(repoRoot, "docs", "rn-webview-fixture-candidates.md"), "utf8");
-  const domainProfiles = fs.readFileSync(path.join(repoRoot, "docs", "frontend-domain-profiles.md"), "utf8");
+  const architecture = fs.readFileSync(path.join(repoRoot, "docs", "rn-webview-architecture.md"), "utf8");
   const preRead = fs.readFileSync(path.join(repoRoot, "src", "adapters", "pre-read.ts"), "utf8");
-  const combined = `${readme}\n${roadmap}\n${release}\n${taxonomy}\n${candidates}\n${domainProfiles}`;
+  const combined = `${readme}\n${roadmap}\n${release}\n${taxonomy}\n${candidates}\n${architecture}`;
 
   assert.match(combined, /React Native(?:\/WebView| and embedded WebView| \/ embedded WebView)/);
   assert.match(combined, /TSX parsing is (?:syntax-level|only syntax-level)|\.tsx` parse is not semantic evidence/);
   assert.match(combined, /normal source reading/);
   assert.match(combined, /React Native \/ WebView promotion ladder/);
   assert.match(roadmap, /React Native \/ WebView fixture candidate survey/);
-  assert.match(roadmap, /Frontend domain profile roadmap/);
-  assert.match(domainProfiles, /Layer 0 — boundary and eligibility policy/);
-  assert.match(domainProfiles, /unsupported-react-native-webview-boundary/);
-  assert.match(domainProfiles, /WebView boundary profile/);
-  assert.match(domainProfiles, /TUI\/Ink candidate profile/);
+  assert.match(roadmap, /React Native \/ WebView architecture direction/);
   assert.match(candidates, /React Native \/ WebView fixture candidate survey/);
+  assert.match(candidates, /React Native \/ WebView architecture direction/);
+  assert.match(architecture, /shared TypeScript AST core, separate domain signal profiles/);
+  assert.match(architecture, /WebView boundary\/fallback profile/);
+  assert.match(architecture, /TUI\/CLI profile candidate/);
   assert.match(candidates, /Tier A: preferred seed candidates/);
   assert.match(candidates, /Recommended first fixture slice/);
   assert.match(candidates, /react-native-webview\/react-native-webview/);
@@ -3656,9 +3685,51 @@ test("docs and pre-read boundary keep React Native and WebView unsupported", () 
   assert.match(combined, /Platform\.select/);
   assert.match(combined, /react-native-webview/);
   assert.match(combined, /fixture corpus, signal model, benchmark evidence, and claim-boundary wording/);
+  assert.match(combined, /domain signal profiles/);
+  assert.match(combined, /architecture direction and staged gates/);
+  assert.match(combined, /not default compact extraction|not default WebView compact extraction|default WebView compact extraction/);
   assert.match(preRead, /unsupported-react-native-webview-boundary/);
   assert.doesNotMatch(combined, /React Native support is available/i);
   assert.doesNotMatch(combined, /React Native(?: \/ WebView)? is supported today/i);
+  assert.doesNotMatch(combined, /default WebView compact extraction is enabled/i);
+  assert.doesNotMatch(combined, /React Native(?: \/ WebView)? support will ship/i);
+});
+
+
+test("docs describe TUI/Ink fixture survey as future candidate evidence only", () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+  const readme = fs.readFileSync(path.join(repoRoot, "README.md"), "utf8");
+  const roadmap = fs.readFileSync(path.join(repoRoot, "docs", "roadmap.md"), "utf8");
+  const architecture = fs.readFileSync(path.join(repoRoot, "docs", "rn-webview-architecture.md"), "utf8");
+  const survey = fs.readFileSync(path.join(repoRoot, "docs", "tui-fixture-candidates.md"), "utf8");
+  const combined = `${readme}\n${roadmap}\n${architecture}\n${survey}`;
+
+  assert.match(survey, /TUI \/ Ink fixture candidate survey/);
+  assert.match(roadmap, /TUI \/ Ink fixture candidate survey\]\(tui-fixture-candidates\.md\)/);
+  assert.match(architecture, /TUI \/ Ink fixture candidate survey\]\(tui-fixture-candidates\.md\)/);
+  assert.match(survey, /future TUI \/ React CLI domain signal profile/);
+  assert.match(survey, /does \*\*not\*\* add TUI support/);
+  assert.match(survey, /shared TypeScript AST core/);
+  assert.match(survey, /existing TSX\/JSX parsing boundary/);
+  assert.match(survey, /fallback\/extract behavior/);
+  assert.match(survey, /Ink CLI app\/component/);
+  assert.match(survey, /Keyboard\/input prompt surface/);
+  assert.match(survey, /Layout\/text styling/);
+  assert.match(survey, /Command status\/progress UI/);
+  assert.match(survey, /Negative\/fallback cases/);
+  assert.match(survey, /No public TUI\/Ink support claim/);
+  assert.match(survey, /No extractor, pre-read, setup, doctor, or runtime behavior change/);
+  assert.match(survey, /No provider-token, billing, runtime-token, performance, or terminal correctness claim/);
+  assert.match(survey, /No default TUI compact extraction or profile promotion/);
+  assert.equal(pkg.files.includes("docs/tui-fixture-candidates.md"), false);
+
+  assert.doesNotMatch(combined, /TUI support is available/i);
+  assert.doesNotMatch(combined, /TUI\/Ink is supported today/i);
+  assert.doesNotMatch(combined, /default TUI compact extraction is enabled/i);
+  assert.doesNotMatch(combined, /TUI behavior support added/i);
+  assert.doesNotMatch(survey, /runtime-token savings/i);
+  assert.doesNotMatch(survey, /provider cost savings/i);
+  assert.doesNotMatch(survey, /billing savings/i);
 });
 
 test("docs give first-run users a clear support and diagnosis path", () => {
