@@ -3990,8 +3990,26 @@ test("frontend domain contract locks taxonomy and pre-detector promotion gates",
   assert.match(contract, /fixture expectation manifest at `test\/fixtures\/frontend-domain-expectations\/manifest\.json` is the pre-detector\/profile gate/);
   assert.match(contract, /This issue does not migrate the manifest schema/);
   assert.match(contract, /Next detector\/profile promotion gate/);
+  assert.match(contract, /Evidence lanes do not approve detector\/profile implementation by themselves/);
+  assert.match(contract, /Detector promotion readiness checklist/);
+  assert.match(contract, /Domain readiness matrix/);
+  assert.match(contract, /runtime detector, extractor, or pre-read behavior/);
+  assert.match(contract, /manifest schema must change without a separate migration plan/);
+  assert.match(contract, /WebView bridge safety, compact-payload reuse, or fallback removal/);
+  assert.match(contract, /RN, WebView, or TUI evidence is described as support/);
+  assert.match(contract, /`unsupported-react-native-webview-boundary` remains the current source-reading boundary reason/);
+  assert.match(contract, /not a final RN semantic model/);
   assert.match(contract, /Promotion stops at the first failed gate/);
   assert.match(contract, /documentation and regression protection only/);
+
+  const readinessMatrixStart = contract.indexOf("### Domain readiness matrix");
+  assert.notEqual(readinessMatrixStart, -1, "Domain readiness matrix section must exist");
+  const readinessMatrixEnd = contract.indexOf("\n\nPromotion stops", readinessMatrixStart);
+  assert.notEqual(readinessMatrixEnd, -1, "Domain readiness matrix must end before the promotion stop rule");
+  const readinessMatrix = contract.slice(readinessMatrixStart, readinessMatrixEnd);
+  for (const domain of ["React Web", "React Native", "WebView", "TUI-Ink", "Mixed", "Unknown"]) {
+    assert.ok(readinessMatrix.includes(`| ${domain} |`), `${domain} readiness matrix row must exist`);
+  }
 
   assert.equal(expectations.schemaVersion, 1);
   assert.equal(selected.get("react-web-regression-form-controls").lane, "react-web");
