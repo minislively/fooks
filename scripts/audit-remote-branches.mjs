@@ -94,12 +94,60 @@ function parseArgs(argv) {
 }
 
 function printHelp() {
-  console.log(`Usage: node scripts/audit-remote-branches.mjs [options]\n\nAudits remote branches against a base ref and classifies branches that can add\nstale-branch noise after main has absorbed equivalent work.\n\nOptions:\n  --base <ref>      Base ref to compare against (default: origin/main)\n  --remote <name>   Remote namespace to audit (default: origin)\n  --no-fetch        Use local remote-tracking refs without fetching first\n  --json            Emit machine-readable JSON instead of markdown\n  --markdown        Emit markdown (default)\n  --output <path>   Write output to a file instead of stdout\n  -h, --help        Show this help\n\nClassification:\n  redundant-merged            branch has no commits ahead of base\n  redundant-patch-equivalent  branch commits are patch-equivalent to base\n  valid-candidate             branch has unique patch commits and no open PR\n  open-pr                     branch has an open PR and is not stale-branch noise
+  console.log(`Usage: node scripts/audit-remote-branches.mjs [options]\n\nAudits remote branches against a base ref and classifies branches that can add\nstale-branch noise after main has absorbed equivalent work.\n\nOptions:\n  --base <ref>      Base ref to compare against (default: origin/main)\n  --remote <name>   Remote namespace to audit (default: origin)\n  --no-fetch        Use local remote-tracking refs without fetching first\n  --json            Emit machine-readable JSON instead of markdown\n  --markdown        Emit markdown (default)\n  --output <path>   Write output to a file instead of stdout\n  -h, --help        Show this help\n\nClassification:\n  redundant-merged            branch has no commits ahead of base\n  redundant-patch-equivalent  branch commits are patch-equivalent to base\n  valid-candidate             branch has unique patch commits, no open PR, and no archive doc\n  archived-stale              branch has unique patch commits but is already archived in docs\n  open-pr                     branch has an open PR and is not stale-branch noise
 
 Next-action shortlist:
   Markdown and JSON include a read-only Discord-friendly valid-candidate
   shortlist for operator triage. It does not recommend deleting branches or
   merging code.`);
+}
+
+
+function listBranchArchiveDocs() {
+  const docsDir = path.join(repoRoot, "docs");
+  try {
+    return fs.readdirSync(docsDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && /branch-archive.*\.md$/i.test(entry.name))
+      .map((entry) => path.join(docsDir, entry.name))
+      .sort((left, right) => left.localeCompare(right));
+  } catch {
+    return [];
+  }
+}
+
+function addArchivedBranch(archives, branchName, docPath, remote) {
+  const normalized = branchName
+    .replace(/^refs\/remotes\//, "")
+    .replace(new RegExp(`^${remote.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/`), "");
+  if (!normalized || normalized === "HEAD" || normalized === "main") return;
+  const relativeDoc = path.relative(repoRoot, docPath);
+  const docs = archives.get(normalized) ?? [];
+  if (!docs.includes(relativeDoc)) docs.push(relativeDoc);
+  archives.set(normalized, docs);
+}
+
+function getArchivedBranchDocs(remote) {
+  const archives = new Map();
+  for (const docPath of listBranchArchiveDocs()) {
+    const content = fs.readFileSync(docPath, "utf8");
+
+    for (const match of content.matchAll(/Branch inspected:\s*`([^`]+)`/gi)) {
+      const ref = match[1].trim();
+      if (ref.startsWith(`${remote}/`)) addArchivedBranch(archives, ref, docPath, remote);
+    }
+
+    for (const match of content.matchAll(/Archive rationale for\s+`([^`]+)`/gi)) {
+      addArchivedBranch(archives, match[1].trim(), docPath, remote);
+    }
+
+    for (const match of content.matchAll(/`([^`]+)`/g)) {
+      const ref = match[1].trim();
+      if (ref.startsWith(`${remote}/`) && !ref.includes("..") && !/\s/.test(ref)) {
+        addArchivedBranch(archives, ref, docPath, remote);
+      }
+    }
+  }
+  return archives;
 }
 
 function getOpenPullRequestHeads(remote) {
@@ -192,7 +240,7 @@ function formatCurrentTreeRisk(impact) {
   return `destructive-stale-tree (${impact.deletedFiles} current-file deletes${evidence})`;
 }
 
-function branchAudit(branch, options, openPrHeads) {
+function branchAudit(branch, options, openPrHeads, archivedBranchDocs) {
   const branchName = branch.slice(`${options.remote}/`.length);
   const [baseOnly, branchOnly] = run("git", ["rev-list", "--left-right", "--count", `${options.base}...${branch}`])
     .split(/\s+/)
@@ -203,6 +251,7 @@ function branchAudit(branch, options, openPrHeads) {
   const uniquePatchCommits = cherryLines.filter((line) => line.startsWith("+")).length;
   const patchEquivalentCommits = cherryLines.filter((line) => line.startsWith("-")).length;
   const hasOpenPr = openPrHeads.has(branchName);
+  const archiveDocs = archivedBranchDocs.get(branchName) ?? [];
   const lastCommitDate = run("git", ["log", "-1", "--format=%cs", branch]);
   const lastSubject = run("git", ["log", "-1", "--format=%s", branch]);
   const lastSha = run("git", ["rev-parse", "--short=12", branch]);
@@ -215,6 +264,7 @@ function branchAudit(branch, options, openPrHeads) {
   if (hasOpenPr) classification = "open-pr";
   else if (branchOnly === 0) classification = "redundant-merged";
   else if (uniquePatchCommits === 0) classification = "redundant-patch-equivalent";
+  else if (archiveDocs.length > 0) classification = "archived-stale";
 
   return {
     branch: branchName,
@@ -227,6 +277,7 @@ function branchAudit(branch, options, openPrHeads) {
     lastCommitDate,
     lastSha,
     lastSubject,
+    archiveDocs,
     currentTreeImpact,
   };
 }
@@ -253,11 +304,12 @@ function markdownTable(rows, classification) {
   if (filtered.length === 0) return `No ${classification} branches.\n`;
 
   const lines = [
-    "| Branch | Ahead | Behind | Unique patches | Patch-equivalent | Current-tree impact | Current-tree risk | Last commit | Tip | Subject |",
-    "| --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- | --- |",
+    "| Branch | Ahead | Behind | Unique patches | Patch-equivalent | Current-tree impact | Current-tree risk | Archive docs | Last commit | Tip | Subject |",
+    "| --- | ---: | ---: | ---: | ---: | --- | --- | --- | --- | --- | --- |",
   ];
   for (const row of filtered) {
-    lines.push(`| \`${row.branch}\` | ${row.aheadOfBaseCommits} | ${row.behindBaseCommits} | ${row.uniquePatchCommits} | ${row.patchEquivalentCommits} | ${escapeMarkdown(formatCurrentTreeImpact(row.currentTreeImpact))} | ${escapeMarkdown(formatCurrentTreeRisk(row.currentTreeImpact))} | ${row.lastCommitDate} | \`${row.lastSha}\` | ${escapeMarkdown(row.lastSubject)} |`);
+    const archiveDocs = row.archiveDocs.length > 0 ? row.archiveDocs.map((doc) => `\`${doc}\``).join(", ") : "—";
+    lines.push(`| \`${row.branch}\` | ${row.aheadOfBaseCommits} | ${row.behindBaseCommits} | ${row.uniquePatchCommits} | ${row.patchEquivalentCommits} | ${escapeMarkdown(formatCurrentTreeImpact(row.currentTreeImpact))} | ${escapeMarkdown(formatCurrentTreeRisk(row.currentTreeImpact))} | ${archiveDocs} | ${row.lastCommitDate} | \`${row.lastSha}\` | ${escapeMarkdown(row.lastSubject)} |`);
   }
   return `${lines.join("\n")}\n`;
 }
@@ -284,7 +336,7 @@ function renderDiscordNextActionShortlist(shortlist) {
 function renderMarkdown(result) {
   const { summary, branches } = result;
   const redundantTotal = (summary.counts["redundant-merged"] ?? 0) + (summary.counts["redundant-patch-equivalent"] ?? 0);
-  return `# Remote branch stale-work audit\n\nGenerated: ${summary.generatedAt}\n\nBase: \`${summary.base}\`\n\nRemote: \`${summary.remote}\`\nGitHub open PR check: ${summary.githubPullRequestsChecked ? `yes (${summary.openPullRequests} open PRs in ${summary.githubRepository})` : "unavailable"}\n\nRegenerate this report with \`npm run --silent branch:audit -- --output docs/remote-branch-audit.md\`. Use \`--json\` for automation.\n\n## Summary\n\n- Total remote branches audited: ${summary.totalBranches}\n- Redundant branches: ${redundantTotal}\n  - Fully merged by commit: ${summary.counts["redundant-merged"] ?? 0}\n  - Patch-equivalent to base: ${summary.counts["redundant-patch-equivalent"] ?? 0}\n- Valid candidates needing human review: ${summary.counts["valid-candidate"] ?? 0}\n- Branches with open PRs: ${summary.counts["open-pr"] ?? 0}\n\n## Discord-friendly valid-candidate next-action shortlist\n\n${renderDiscordNextActionShortlist(result.discordNextActionShortlist)}\n## Valid candidates without open PRs\n\nThese branches still have unique patch commits relative to \`${summary.base}\`. This audit is read-only and does not recommend deleting branches or merging code.\n\n${markdownTable(branches, "valid-candidate")}\n## Redundant: fully merged by commit\n\n${markdownTable(branches, "redundant-merged")}\n## Redundant: patch-equivalent to base\n\nThese branches still have commits ahead of the base ref, but \`git cherry\` reports their patches as already present in \`${summary.base}\`.\n\n${markdownTable(branches, "redundant-patch-equivalent")}\n## Open PR branches\n\n${markdownTable(branches, "open-pr")}`;
+  return `# Remote branch stale-work audit\n\nGenerated: ${summary.generatedAt}\n\nBase: \`${summary.base}\`\n\nRemote: \`${summary.remote}\`\nGitHub open PR check: ${summary.githubPullRequestsChecked ? `yes (${summary.openPullRequests} open PRs in ${summary.githubRepository})` : "unavailable"}\n\nRegenerate this report with \`npm run --silent branch:audit -- --output docs/remote-branch-audit.md\`. Use \`--json\` for automation.\n\n## Summary\n\n- Total remote branches audited: ${summary.totalBranches}\n- Redundant branches: ${redundantTotal}\n  - Fully merged by commit: ${summary.counts["redundant-merged"] ?? 0}\n  - Patch-equivalent to base: ${summary.counts["redundant-patch-equivalent"] ?? 0}\n- Valid candidates needing human review: ${summary.counts["valid-candidate"] ?? 0}\n- Archived stale branches already documented: ${summary.counts["archived-stale"] ?? 0}\n- Branches with open PRs: ${summary.counts["open-pr"] ?? 0}\n\n## Discord-friendly valid-candidate next-action shortlist\n\n${renderDiscordNextActionShortlist(result.discordNextActionShortlist)}\n## Valid candidates without open PRs\n\nThese branches still have unique patch commits relative to \`${summary.base}\`. This audit is read-only and does not recommend deleting branches or merging code.\n\n${markdownTable(branches, "valid-candidate")}\n## Archived stale branches\n\nThese branches still have unique patch commits, but existing \`docs/*branch-archive*.md\` evidence already records a stale-branch archive decision. They are kept out of the fresh valid-candidate shortlist.\n\n${markdownTable(branches, "archived-stale")}\n## Redundant: fully merged by commit\n\n${markdownTable(branches, "redundant-merged")}\n## Redundant: patch-equivalent to base\n\nThese branches still have commits ahead of the base ref, but \`git cherry\` reports their patches as already present in \`${summary.base}\`.\n\n${markdownTable(branches, "redundant-patch-equivalent")}\n## Open PR branches\n\n${markdownTable(branches, "open-pr")}`;
 }
 
 function main() {
@@ -295,14 +347,16 @@ function main() {
 
   run("git", ["rev-parse", "--verify", options.base]);
   const prInfo = getOpenPullRequestHeads(options.remote);
+  const archivedBranchDocs = getArchivedBranchDocs(options.remote);
   const branches = listRemoteBranches(options.remote, options.base)
-    .map((branch) => branchAudit(branch, options, prInfo.heads))
+    .map((branch) => branchAudit(branch, options, prInfo.heads, archivedBranchDocs))
     .sort((left, right) => {
       const classOrder = {
         "valid-candidate": 0,
         "open-pr": 1,
-        "redundant-merged": 2,
-        "redundant-patch-equivalent": 3,
+        "archived-stale": 2,
+        "redundant-merged": 3,
+        "redundant-patch-equivalent": 4,
       };
       return classOrder[left.classification] - classOrder[right.classification]
         || right.lastCommitDate.localeCompare(left.lastCommitDate)

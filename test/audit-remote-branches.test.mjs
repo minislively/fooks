@@ -113,3 +113,108 @@ printf '%s\n' '[]'
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("remote branch audit classifies branch archive docs outside fresh candidates", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "fooks-branch-audit-"));
+  const binDir = path.join(tempDir, "bin");
+  const archiveDoc = path.join(repoRoot, "docs", "zz-test-branch-archive-315.md");
+  fs.mkdirSync(binDir, { recursive: true });
+
+  writeExecutable(path.join(binDir, "git"), `#!/bin/sh
+args="$*"
+case "$args" in
+  "remote get-url origin")
+    printf '%s\n' 'https://github.com/minislively/fooks.git'
+    ;;
+  "fetch --prune origin")
+    exit 0
+    ;;
+  "rev-parse --verify origin/main")
+    printf '%s\n' 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    ;;
+  "branch -r --format=%(refname:short)")
+    printf '%s\n' 'origin/main' 'origin/already-archived' 'origin/fresh-candidate'
+    ;;
+  "rev-list --left-right --count origin/main...origin/already-archived"|"rev-list --left-right --count origin/main...origin/fresh-candidate")
+    printf '%s\n' '0 1'
+    ;;
+  "cherry origin/main origin/already-archived")
+    printf '%s\n' '+ bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+    ;;
+  "cherry origin/main origin/fresh-candidate")
+    printf '%s\n' '+ cccccccccccccccccccccccccccccccccccccccc'
+    ;;
+  "log -1 --format=%cs origin/already-archived"|"log -1 --format=%cs origin/fresh-candidate")
+    printf '%s\n' '2026-04-27'
+    ;;
+  "log -1 --format=%s origin/already-archived")
+    printf '%s\n' 'Archived branch fixture'
+    ;;
+  "log -1 --format=%s origin/fresh-candidate")
+    printf '%s\n' 'Fresh branch fixture'
+    ;;
+  "rev-parse --short=12 origin/already-archived")
+    printf '%s\n' 'bbbbbbbbbbbb'
+    ;;
+  "rev-parse --short=12 origin/fresh-candidate")
+    printf '%s\n' 'cccccccccccc'
+    ;;
+  "diff --name-status origin/main origin/already-archived"|"diff --name-status origin/main origin/fresh-candidate")
+    printf '%s\n' 'M	README.md'
+    ;;
+  "diff --shortstat origin/main origin/already-archived"|"diff --shortstat origin/main origin/fresh-candidate")
+    printf '%s\n' '1 file changed, 1 insertion(+)'
+    ;;
+  *)
+    printf 'unexpected git args: %s\n' "$args" >&2
+    exit 64
+    ;;
+esac
+`);
+
+  writeExecutable(path.join(binDir, "gh"), `#!/bin/sh
+printf '%s\n' '[]'
+`);
+
+  fs.writeFileSync(archiveDoc, `# Archive rationale for \`already-archived\` (#315)
+
+Branch inspected: \`origin/already-archived\`
+
+## Decision
+
+Archive the stale branch instead of replaying it.
+`);
+
+  try {
+    const stdout = execFileSync(process.execPath, [auditScript, "--json"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const result = JSON.parse(stdout);
+    const archivedBranch = result.branches.find((branch) => branch.branch === "already-archived");
+    const freshBranch = result.branches.find((branch) => branch.branch === "fresh-candidate");
+
+    assert.equal(archivedBranch.classification, "archived-stale");
+    assert.deepEqual(archivedBranch.archiveDocs, ["docs/zz-test-branch-archive-315.md"]);
+    assert.equal(freshBranch.classification, "valid-candidate");
+    assert.deepEqual(
+      result.discordNextActionShortlist.map((item) => item.branch),
+      ["fresh-candidate"],
+    );
+
+    const markdown = execFileSync(process.execPath, [auditScript, "--markdown"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${binDir}${path.delimiter}${process.env.PATH ?? ""}` },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    assert.match(markdown, /## Archived stale branches/);
+    assert.match(markdown, /`already-archived`/);
+    assert.match(markdown, /docs\/zz-test-branch-archive-315\.md/);
+  } finally {
+    fs.rmSync(archiveDoc, { force: true });
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
