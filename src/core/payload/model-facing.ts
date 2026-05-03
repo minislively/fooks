@@ -1,5 +1,6 @@
 import path from "node:path";
 import { deriveDesignReviewMetadata } from "../design-review-metadata";
+import { buildReactWebContextMetadata } from "../react-web-context-metadata";
 import { buildReactWebDomainPayload, REACT_WEB_DOMAIN_PAYLOAD_POLICY } from "./domain-payload";
 import type { EditGuidance, ExtractionResult, ModelFacingPayload, PatchTarget, PatchTargetKind, SourceFingerprint, SourceRange } from "../schema";
 
@@ -14,6 +15,7 @@ const EDIT_GUIDANCE_INSTRUCTIONS = [
 export type ModelFacingPayloadOptions = {
   includeEditGuidance?: boolean;
   includeDesignReviewMetadata?: boolean;
+  includeReactWebContextMetadata?: boolean;
   includeDomainPayload?: boolean;
   domainPayloadPolicy?: string;
 };
@@ -128,14 +130,16 @@ function buildEditGuidance(result: ExtractionResult, freshness: SourceFingerprin
 }
 
 export function toModelFacingPayload(result: ExtractionResult, cwd = process.cwd(), options: ModelFacingPayloadOptions = {}): ModelFacingPayload {
-  const domainPayload = options.includeDomainPayload
+  const relativeFilePath = toRelativePath(result.filePath, cwd);
+  const domainPayloadGate = options.includeDomainPayload || options.includeReactWebContextMetadata
     ? buildReactWebDomainPayload(result, result.domainDetection, options.domainPayloadPolicy ?? REACT_WEB_DOMAIN_PAYLOAD_POLICY)
     : undefined;
+  const domainPayload = options.includeDomainPayload ? domainPayloadGate : undefined;
 
   if (result.useOriginal && result.mode === "raw" && result.rawText) {
     return {
       mode: result.mode,
-      filePath: toRelativePath(result.filePath, cwd),
+      filePath: relativeFilePath,
       useOriginal: true,
       rawText: result.rawText,
       ...(domainPayload ? { domainPayload } : {}),
@@ -197,16 +201,20 @@ export function toModelFacingPayload(result: ExtractionResult, cwd = process.cwd
   const designReviewMetadata = options.includeDesignReviewMetadata
     ? deriveDesignReviewMetadata(result)
     : undefined;
+  const reactWebContext = options.includeReactWebContextMetadata && domainPayloadGate
+    ? buildReactWebContextMetadata(result, fingerprint, relativeFilePath, editGuidance)
+    : undefined;
 
   return {
     mode: result.mode,
-    filePath: toRelativePath(result.filePath, cwd),
+    filePath: relativeFilePath,
     ...(result.mode === "raw" && result.rawText ? { rawText: result.rawText } : {}),
     ...(result.componentName ? { componentName: result.componentName } : {}),
     ...(result.componentLoc ? { componentLoc: result.componentLoc } : {}),
     ...(fingerprint ? { sourceFingerprint: fingerprint } : {}),
     ...(editGuidance ? { editGuidance } : {}),
     ...(designReviewMetadata ? { designReviewMetadata } : {}),
+    ...(reactWebContext ? { reactWebContext } : {}),
     ...(domainPayload ? { domainPayload } : {}),
     ...(result.exports.length > 0 ? { exports: result.exports } : {}),
     ...(contract ? { contract } : {}),
