@@ -12,7 +12,7 @@ import {
 
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 
-test("field-array task outcome dogfood recommends concrete patch-target promotion first", async () => {
+test("field-array task outcome dogfood records useFieldArray patch-target promotion", async () => {
   const evidence = await buildReactWebFieldArrayTaskOutcomeEvidence({ repoRoot, runId: "test" });
 
   assert.equal(evidence.schemaVersion, REACT_WEB_FIELD_ARRAY_TASK_OUTCOME_SCHEMA_VERSION);
@@ -20,17 +20,18 @@ test("field-array task outcome dogfood recommends concrete patch-target promotio
   assert.equal(evidence.sourceSignals.containsUseFieldArray, true);
   assert.equal(evidence.sourceSignals.containsFieldsMap, true);
   assert.equal(evidence.sourceSignals.containsRegisterPath, true);
-  assert.equal(evidence.evaluations.defaultBudget.readiness, "insufficient");
+  assert.equal(evidence.evaluations.defaultBudget.readiness, "partial");
+  assert.equal(evidence.evaluations.defaultBudget.presentCount, 1);
   assert.equal(evidence.evaluations.wideBudget.readiness, "partial");
-  assert.equal(evidence.priorityEvidenceSummary.defaultUseFieldArrayPatchTargetSelected, false);
+  assert.equal(evidence.priorityEvidenceSummary.defaultUseFieldArrayPatchTargetSelected, true);
   assert.equal(evidence.priorityEvidenceSummary.wideUseFieldArrayPatchTargetSelected, true);
-  assert.equal(evidence.recommendation.verdict, "promote-useFieldArray-patch-target-before-dynamic-role");
+  assert.equal(evidence.recommendation.verdict, "consider-dynamic-fields-role-after-task-miss");
   assert.match(evidence.claimBoundary, /not live Codex\/Claude model outcome proof/);
   assert.match(evidence.claimBoundary, /not token\/cost\/billing evidence/);
 
   const markdown = renderReactWebFieldArrayTaskOutcomeMarkdown(evidence);
   assert.match(markdown, /field-array task-outcome dogfood evidence/);
-  assert.match(markdown, /promote-useFieldArray-patch-target-before-dynamic-role/);
+  assert.match(markdown, /consider-dynamic-fields-role-after-task-miss/);
   assert.match(markdown, /defaultBudget/);
   assert.match(markdown, /wideBudget/);
 });
