@@ -19,7 +19,7 @@ test("React Web field-array dogfood evidence records priority decision boundary"
   assert.equal(evidence.measurement, "react-web-field-array-consumer-priority-dogfood");
   assert.equal(evidence.source.containsUseFieldArray, true);
   assert.equal(evidence.source.containsFieldsMap, true);
-  assert.equal(evidence.defaultBudget.useFieldArrayPatchTargetSelected, false);
+  assert.equal(evidence.defaultBudget.useFieldArrayPatchTargetSelected, true);
   assert.equal(evidence.wideBudget.useFieldArrayPatchTargetSelected, true);
   assert.equal(evidence.defaultBudget.dynamicFieldsRoleSelected, false);
   assert.equal(evidence.defaultBudget.dynamicFieldsRoleCoverage.status, "deferred");
@@ -29,9 +29,8 @@ test("React Web field-array dogfood evidence records priority decision boundary"
 
   const markdown = renderReactWebFieldArrayDogfoodMarkdown(evidence);
   assert.match(markdown, /React Web field-array dogfood priority evidence/);
-  assert.match(markdown, /useFieldArray patch-target selected: no/);
-  assert.match(markdown, /Wide inspection budget/);
   assert.match(markdown, /useFieldArray patch-target selected: yes/);
+  assert.match(markdown, /Wide inspection budget/);
   assert.match(markdown, /dynamic-fields role selected: no/);
   assert.match(markdown, /defer-promotion-pending-task-outcome/);
 });

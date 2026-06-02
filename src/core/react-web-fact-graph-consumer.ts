@@ -132,7 +132,8 @@ function confidenceScore(confidence: FactGraphConfidence): number {
   }
 }
 
-function priorityFor(kind: string, anchorType: ReactWebFactGraphAnchorType): number {
+function priorityFor(kind: string, anchorType: ReactWebFactGraphAnchorType, label = ""): number {
+  if (kind === "patch-target:validation-anchor" && label === "useFieldArray") return 110;
   if (kind.startsWith("patch-target") || kind === "targets") return 100;
   if (kind === "component" || kind === "file" || kind === "contains") return 90;
   if (kind.startsWith("edit-target-route")) return 85;
@@ -169,7 +170,7 @@ function nodeCandidate(node: FactNode, freshnessStatus: FactGraphFreshnessStatus
     kind: node.kind,
     label: node.label,
     confidence: node.confidence,
-    priority: priorityFor(node.kind, "node"),
+    priority: priorityFor(node.kind, "node", node.label),
     reason: nodeReason(node),
     sourceRefs: node.sourceRefs,
     freshnessStatus,
@@ -194,7 +195,7 @@ function edgeCandidate(edge: FactEdge, nodesById: Map<string, FactNode>, freshne
     kind: edge.kind,
     label: edgeLabel(edge, nodesById),
     confidence: edge.confidence,
-    priority: priorityFor(edge.kind, "edge"),
+    priority: priorityFor(edge.kind, "edge", edgeLabel(edge, nodesById)),
     reason: edgeReason(edge),
     sourceRefs: edge.sourceRefs,
     freshnessStatus,
