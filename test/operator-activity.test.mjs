@@ -20,6 +20,8 @@ const {
   OPERATOR_ACTIVITY_CURRENT_RUN_SOURCE,
   OPERATOR_ACTIVITY_POST_MERGE_MAIN_CI_CLAIM_BOUNDARY,
   OPERATOR_ACTIVITY_POST_MERGE_MAIN_CI_SOURCE,
+  OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_CLAIM_BOUNDARY,
+  OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_SOURCE,
   OPERATOR_ACTIVITY_REMOTE_COUNTS_FLAG,
   OPERATOR_ACTIVITY_REMOTE_SOURCE,
   OPERATOR_ACTIVITY_STAGED_OMX_PROMPT_SOURCE,
@@ -862,6 +864,17 @@ test("idle activity snapshot remains zero and read-only with opt-in remote count
     classification: "activeOrUnknown",
     mainEchoEvidence: false,
     activeWorkEvidence: true,
+    mergedBranchResidueEvidence: {
+      source: OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_SOURCE,
+      claimBoundary: OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_CLAIM_BOUNDARY,
+      readOnly: true,
+      available: false,
+      branch: "dogfood/issue-428-idle-activity-snapshot",
+      mergedIntoOriginMain: false,
+      suppressesCurrentBranchActiveEvidence: false,
+      reason: "merged-branch residue evidence unavailable; preserve existing conservative branch evidence",
+      blockers: ["git merged-branch residue evidence unavailable: unexpected command git branch --merged origin/main"],
+    },
     remoteCountsRequired: true,
     evidence: {
       branch: "dogfood/issue-428-idle-activity-snapshot",
@@ -2104,6 +2117,107 @@ test("CLI check and status activity treat absent tmux server as zero mapped sess
     readOnly: true,
     claimBoundary: OPERATOR_ACTIVITY_CURRENT_RUN_CLAIM_BOUNDARY,
   });
+});
+
+
+test("operator activity treats clean current merged PR checkout branch residue as non-active", () => {
+  const tempDir = makeTempProject();
+  const calls = [];
+  const snapshot = readOperatorActivitySnapshot(tempDir, {
+    includeRemoteCounts: true,
+    now: () => "2026-06-03T08:00:00.000Z",
+    runner: () => "",
+    gitRunner: (_cwd, args) => {
+      if (args[0] === "symbolic-ref") return "pr-1133\n";
+      if (args[0] === "rev-parse") return "origin/main\n";
+      if (args[0] === "rev-list") return "0\t0\n";
+      throw new Error(`unexpected git ${args.join(" ")}`);
+    },
+    commandRunner: (command, args) => {
+      calls.push([command, ...args].join(" "));
+      const joined = args.join(" ");
+      if (command === "git" && joined === "branch --merged origin/main") return "main\npr-1133\n";
+      if (command === "git" && joined === "worktree list --porcelain") {
+        return [`worktree ${tempDir}`, "HEAD pr1133head", "branch refs/heads/pr-1133", ""].join("\n");
+      }
+      if (command === "git" && joined === "rev-parse --verify origin/main") return "origin-main-sha\n";
+      if (command === "git" && joined === "branch --format=%(refname:short)") return "main\npr-1133\n";
+      if (command === "git" && joined === "status --porcelain=v1 -z") return "";
+      if (command === "tmux") return "";
+      if (command === "gh" && args[0] === "issue") return "[]";
+      if (command === "gh" && args[0] === "pr") return "[]";
+      throw new Error(`unexpected command ${command} ${joined}`);
+    },
+    pathExists: (targetPath) => targetPath === tempDir,
+  });
+
+  assert.equal(snapshot.currentRunEvidence.mergedBranchResidueEvidence.available, true);
+  assert.equal(snapshot.currentRunEvidence.mergedBranchResidueEvidence.mergedIntoOriginMain, true);
+  assert.equal(snapshot.currentRunEvidence.mergedBranchResidueEvidence.suppressesCurrentBranchActiveEvidence, true);
+  assert.equal(snapshot.currentRunEvidence.classification, "mainEchoNonActive");
+  assert.equal(snapshot.currentRunEvidence.mainEchoEvidence, true);
+  assert.equal(snapshot.currentRunEvidence.activeWorkEvidence, false);
+  assert.deepEqual(snapshot.currentRunEvidence.receipt, {
+    status: "idle",
+    active: false,
+    oneLine: "Current fooks run is idle/non-active: branch pr-1133, zero divergence, no mapped fooks sessions, zero open issues/PRs.",
+    evidenceKinds: [],
+    advisoryOnly: true,
+    readOnly: true,
+    claimBoundary: OPERATOR_ACTIVITY_CURRENT_RUN_CLAIM_BOUNDARY,
+  });
+  assert.equal(calls.some((call) => /fetch|worktree remove|branch -d|push|gh issue create|gh pr create/.test(call)), false);
+});
+
+test("operator check does not authorize clean current merged PR checkout residue as live handoff artifact", () => {
+  const tempDir = makeTempProject();
+  const calls = [];
+  const snapshot = readOperatorCheckSnapshot(tempDir, {
+    now: () => "2026-06-03T08:00:00.000Z",
+    runner: () => "",
+    gitRunner: (_cwd, args) => {
+      if (args[0] === "symbolic-ref") return "pr-1133\n";
+      if (args[0] === "rev-parse") return "origin/main\n";
+      if (args[0] === "rev-list") return "0\t0\n";
+      throw new Error(`unexpected git ${args.join(" ")}`);
+    },
+    commandRunner: (command, args) => {
+      calls.push([command, ...args].join(" "));
+      const joined = args.join(" ");
+      if (command === "tmux") return "";
+      if (command === "gh" && joined === "issue list --state open --json number --limit 1000") return "[]";
+      if (command === "gh" && joined === "pr list --state open --json number --limit 1000") return "[]";
+      if (command === "gh" && joined === "pr list --state open --json number,url,headRefName --limit 200") return "[]";
+      if (command === "gh" && joined === "pr list --state closed --json number,url,headRefName,state,closedAt --limit 200") {
+        return JSON.stringify([{ number: 1133, headRefName: "pr-1133", state: "MERGED", closedAt: "2026-06-03T07:55:00Z" }]);
+      }
+      if (command === "gh" && args[0] === "run") return "[]";
+      if (command === "git" && joined === "config --get remote.origin.url") return "git@github.com:minislively/fooks.git\n";
+      if (command === "git" && joined === "worktree list --porcelain") {
+        return [`worktree ${tempDir}`, "HEAD pr1133head", "branch refs/heads/pr-1133", ""].join("\n");
+      }
+      if (command === "git" && joined === "rev-parse --verify origin/main") return "origin-main-sha\n";
+      if (command === "git" && joined === "branch --format=%(refname:short)") return "main\npr-1133\n";
+      if (command === "git" && joined === "branch -r --format=%(refname:short)") return "origin/main\norigin/pr-1133\n";
+      if (command === "git" && joined === "branch --merged origin/main") return "main\npr-1133\n";
+      if (command === "git" && joined === "status --porcelain=v1 -z") return "";
+      if (command === "git" && joined === "diff --shortstat origin/main...HEAD") return "";
+      if (command === "git" && joined === "rev-list --left-right --count origin/main...HEAD") return "0 0\n";
+      throw new Error(`unexpected command ${command} ${joined}`);
+    },
+    pathExists: (targetPath) => targetPath === tempDir,
+  });
+
+  assert.equal(snapshot.verdict, "idleRequiresActiveArtifact");
+  assert.deepEqual(snapshot.activeArtifacts, []);
+  assert.equal(snapshot.requiredActiveArtifact.required, true);
+  assert.equal(snapshot.activity.currentRunEvidence.activeWorkEvidence, false);
+  assert.equal(snapshot.activity.currentRunEvidence.mergedBranchResidueEvidence.suppressesCurrentBranchActiveEvidence, true);
+  assert.equal(snapshot.activeWorkReceipts.handoffArtifactEvidence.currentEvidence.liveNonMainWorktreePresent, false);
+  assert.equal(snapshot.activeWorkReceipts.handoffArtifactEvidence.adoptedLiveArtifactPresent, false);
+  assert.equal(snapshot.activeWorkReceipts.cleanIdleNudgeHandoffBoundary.currentEvidence.liveNonMainWorktreePresent, false);
+  assert.equal(snapshot.activeWorkReceipts.cleanIdleNudgeHandoffBoundary.requiresExplicitHandoffArtifactBeforeDevelopmentClaim, true);
+  assert.equal(calls.some((call) => /fetch|worktree remove|branch -d|push|gh issue create|gh pr create/.test(call)), false);
 });
 
 test("CLI status activity receipt projection matches full active current-run receipt", () => {
