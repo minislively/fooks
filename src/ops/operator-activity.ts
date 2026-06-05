@@ -48,7 +48,7 @@ export const OPERATOR_ACTIVITY_REMOTE_COUNTS_NEXT_ACTION_ISSUE_URL = "https://gi
 export const OPERATOR_ACTIVITY_REMOTE_COUNTS_NEXT_ACTION_SOURCE = "operator/activity issue #1073 remote-counts-required next-action cue";
 export const OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_SOURCE = "local git branch --merged origin/main current-checkout residue evidence";
 export const OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_CLAIM_BOUNDARY =
-  "Read-only local git evidence only: a clean zero-divergence current checkout branch already merged into local origin/main is stale residue and not current active development; dirty or local-ahead state remains active or review-worthy.";
+  "Read-only local git evidence only: a clean current checkout branch already merged into local origin/main is stale residue and not current active development; dirty state remains active or review-worthy.";
 export const OPERATOR_ACTIVITY_REMOTE_COUNTS_NEXT_ACTION_CLAIM_BOUNDARY =
   "Operator-visible status/activity next-action cue only; remote counts remain explicit opt-in, the operator-check JSON boundary remains the source of truth after include-remote-counts, and this cue adds no active-development evidence, authority, telemetry, merge gate, approval, product, or frontend behavior.";
 export const OPERATOR_ACTIVITY_TMUX_CAPTURE_COMMAND = "tmux capture-pane -pt <pane_id> -S -200";
@@ -1559,14 +1559,14 @@ function readMergedBranchResidueEvidence(
       blockers: [],
     };
   }
-  const cleanZeroDivergence = worktree.clean === true && worktree.ahead === 0 && worktree.behind === 0;
-  if (!cleanZeroDivergence) {
+  const cleanMergedResidueCandidate = worktree.clean === true;
+  if (!cleanMergedResidueCandidate) {
     return {
       ...base,
       available: true,
       mergedIntoOriginMain: false,
       suppressesCurrentBranchActiveEvidence: false,
-      reason: "current branch is not clean with zero local divergence; preserve as active or review-worthy evidence",
+      reason: "current branch is not clean; preserve as active or review-worthy evidence",
       blockers: [],
     };
   }
@@ -1581,8 +1581,8 @@ function readMergedBranchResidueEvidence(
       mergedIntoOriginMain,
       suppressesCurrentBranchActiveEvidence: mergedIntoOriginMain,
       reason: mergedIntoOriginMain
-        ? "current clean zero-divergence branch is already merged into local origin/main; treat as stale merged-branch residue, not active development"
-        : "current clean zero-divergence branch is not listed as merged into local origin/main",
+        ? "current clean branch is already merged into local origin/main; treat as stale merged-branch residue, not active development"
+        : "current clean branch is not listed as merged into local origin/main",
       blockers: [],
     };
   } catch (error) {
@@ -1657,10 +1657,10 @@ function buildCurrentRunEvidence(
   }
 
   if (suppressCurrentBranchActiveEvidence) {
-    reasons.push("current branch is clean zero-divergence merged residue and is separated from active current-run evidence");
+    reasons.push("current branch is clean merged residue and is separated from active current-run evidence");
   }
 
-  const mainEchoEvidence = blockers.length === 0 && (onMain || suppressCurrentBranchActiveEvidence) && clean && noLocalDivergence && noSessions && remoteCountsIdle;
+  const mainEchoEvidence = blockers.length === 0 && (onMain || suppressCurrentBranchActiveEvidence) && clean && (noLocalDivergence || suppressCurrentBranchActiveEvidence) && noSessions && remoteCountsIdle;
   const activeWorkEvidence =
     (Boolean(worktree.branch) && worktree.branch !== "main" && !suppressCurrentBranchActiveEvidence && !hasOnlyFooksSessionTaskDelta(worktree)) ||
     (worktree.clean === false && !hasOnlyFooksSessionTaskDelta(worktree)) ||

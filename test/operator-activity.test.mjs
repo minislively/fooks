@@ -2169,6 +2169,79 @@ test("operator activity treats clean current merged PR checkout branch residue a
   assert.equal(calls.some((call) => /fetch|worktree remove|branch -d|push|gh issue create|gh pr create/.test(call)), false);
 });
 
+test("operator activity treats clean merged checkout branch without upstream as non-active residue", () => {
+  const tempDir = makeTempProject();
+  const snapshot = readOperatorActivitySnapshot(tempDir, {
+    includeRemoteCounts: true,
+    now: () => "2026-06-03T08:01:00.000Z",
+    runner: () => "",
+    gitRunner: (_cwd, args) => {
+      if (args[0] === "symbolic-ref") return "pr-1133\n";
+      if (args[0] === "rev-parse") throw new Error("no upstream configured");
+      throw new Error(`unexpected git ${args.join(" ")}`);
+    },
+    commandRunner: (command, args) => {
+      const joined = args.join(" ");
+      if (command === "git" && joined === "branch --merged origin/main") return "main\npr-1133\n";
+      if (command === "git" && joined === "worktree list --porcelain") {
+        return [`worktree ${tempDir}`, "HEAD pr1133head", "branch refs/heads/pr-1133", ""].join("\n");
+      }
+      if (command === "git" && joined === "rev-parse --verify origin/main") return "origin-main-sha\n";
+      if (command === "git" && joined === "branch --format=%(refname:short)") return "main\npr-1133\n";
+      if (command === "git" && joined === "status --porcelain=v1 -z") return "";
+      if (command === "tmux") return "";
+      if (command === "gh" && args[0] === "issue") return "[]";
+      if (command === "gh" && args[0] === "pr") return "[]";
+      throw new Error(`unexpected command ${command} ${joined}`);
+    },
+    pathExists: (targetPath) => targetPath === tempDir,
+  });
+
+  assert.equal(snapshot.worktree.upstream, undefined);
+  assert.equal(snapshot.worktree.ahead, undefined);
+  assert.equal(snapshot.currentRunEvidence.mergedBranchResidueEvidence.available, true);
+  assert.equal(snapshot.currentRunEvidence.mergedBranchResidueEvidence.mergedIntoOriginMain, true);
+  assert.equal(snapshot.currentRunEvidence.mergedBranchResidueEvidence.suppressesCurrentBranchActiveEvidence, true);
+  assert.equal(snapshot.currentRunEvidence.classification, "mainEchoNonActive");
+  assert.equal(snapshot.currentRunEvidence.mainEchoEvidence, true);
+  assert.equal(snapshot.currentRunEvidence.activeWorkEvidence, false);
+  assert.deepEqual(snapshot.currentRunEvidence.receipt.evidenceKinds, []);
+});
+
+test("operator activity preserves dirty merged checkout branch as active residue review", () => {
+  const tempDir = makeTempProject();
+  const snapshot = readOperatorActivitySnapshot(tempDir, {
+    includeRemoteCounts: true,
+    now: () => "2026-06-03T08:02:00.000Z",
+    runner: () => " M src/index.ts\0",
+    gitRunner: (_cwd, args) => {
+      if (args[0] === "symbolic-ref") return "pr-1133\n";
+      if (args[0] === "rev-parse") throw new Error("no upstream configured");
+      throw new Error(`unexpected git ${args.join(" ")}`);
+    },
+    commandRunner: (command, args) => {
+      const joined = args.join(" ");
+      if (command === "git" && joined === "worktree list --porcelain") {
+        return [`worktree ${tempDir}`, "HEAD pr1133head", "branch refs/heads/pr-1133", ""].join("\n");
+      }
+      if (command === "git" && joined === "rev-parse --verify origin/main") return "origin-main-sha\n";
+      if (command === "git" && joined === "branch --format=%(refname:short)") return "main\npr-1133\n";
+      if (command === "git" && joined === "status --porcelain=v1 -z") return " M src/index.ts\0";
+      if (command === "tmux") return "";
+      if (command === "gh" && args[0] === "issue") return "[]";
+      if (command === "gh" && args[0] === "pr") return "[]";
+      throw new Error(`unexpected command ${command} ${joined}`);
+    },
+    pathExists: (targetPath) => targetPath === tempDir,
+  });
+
+  assert.equal(snapshot.currentRunEvidence.mergedBranchResidueEvidence.suppressesCurrentBranchActiveEvidence, false);
+  assert.equal(snapshot.currentRunEvidence.mergedBranchResidueEvidence.reason, "current branch is not clean; preserve as active or review-worthy evidence");
+  assert.equal(snapshot.currentRunEvidence.classification, "activeOrUnknown");
+  assert.equal(snapshot.currentRunEvidence.activeWorkEvidence, true);
+  assert.deepEqual(snapshot.currentRunEvidence.receipt.evidenceKinds, ["branch", "delta"]);
+});
+
 test("operator check does not authorize clean current merged PR checkout residue as live handoff artifact", () => {
   const tempDir = makeTempProject();
   const calls = [];
