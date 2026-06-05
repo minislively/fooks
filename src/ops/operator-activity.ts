@@ -46,6 +46,9 @@ export const OPERATOR_ACTIVITY_STAGED_OMX_PROMPT_CLAIM_BOUNDARY =
 export const OPERATOR_ACTIVITY_REMOTE_COUNTS_NEXT_ACTION_ISSUE = "#1073";
 export const OPERATOR_ACTIVITY_REMOTE_COUNTS_NEXT_ACTION_ISSUE_URL = "https://github.com/minislively/fooks/issues/1073";
 export const OPERATOR_ACTIVITY_REMOTE_COUNTS_NEXT_ACTION_SOURCE = "operator/activity issue #1073 remote-counts-required next-action cue";
+export const OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_SOURCE = "local git branch --merged origin/main current-checkout residue evidence";
+export const OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_CLAIM_BOUNDARY =
+  "Read-only local git evidence only: a clean current checkout branch already merged into local origin/main is stale residue and not current active development; dirty state remains active or review-worthy.";
 export const OPERATOR_ACTIVITY_REMOTE_COUNTS_NEXT_ACTION_CLAIM_BOUNDARY =
   "Operator-visible status/activity next-action cue only; remote counts remain explicit opt-in, the operator-check JSON boundary remains the source of truth after include-remote-counts, and this cue adds no active-development evidence, authority, telemetry, merge gate, approval, product, or frontend behavior.";
 export const OPERATOR_ACTIVITY_TMUX_CAPTURE_COMMAND = "tmux capture-pane -pt <pane_id> -S -200";
@@ -175,6 +178,18 @@ export type OperatorActivityRemoteCounts =
 
 export type OperatorActivityCurrentRunClassification = "mainEchoNonActive" | "activeOrUnknown";
 
+export type OperatorActivityMergedBranchResidueEvidence = {
+  source: typeof OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_SOURCE;
+  claimBoundary: typeof OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_CLAIM_BOUNDARY;
+  readOnly: true;
+  available: boolean;
+  branch?: string;
+  mergedIntoOriginMain: boolean;
+  suppressesCurrentBranchActiveEvidence: boolean;
+  reason: string;
+  blockers: string[];
+};
+
 export type OperatorActivityCurrentRunReceipt = {
   status: "active" | "idle";
   active: boolean;
@@ -210,6 +225,7 @@ export type OperatorActivityCurrentRunEvidence = {
   classification: OperatorActivityCurrentRunClassification;
   mainEchoEvidence: boolean;
   activeWorkEvidence: boolean;
+  mergedBranchResidueEvidence: OperatorActivityMergedBranchResidueEvidence;
   remoteCountsRequired: true;
   evidence: {
     branch?: string;
@@ -718,6 +734,7 @@ function plural(count: number, singular: string, pluralValue = `${singular}s`): 
 
 function buildCurrentRunReceipt(input: {
   worktree: OperatorActivityWorktree;
+  suppressCurrentBranchActiveEvidence: boolean;
   fooksSessionCount: number;
   openIssues?: number;
   openPullRequests?: number;
@@ -738,7 +755,7 @@ function buildCurrentRunReceipt(input: {
     evidenceKinds.push("pullRequest");
     activeParts.push(plural(input.openPullRequests, "open PR"));
   }
-  if (input.worktree.branch && input.worktree.branch !== "main" && !hasOnlyFooksSessionTaskDelta(input.worktree)) {
+  if (input.worktree.branch && input.worktree.branch !== "main" && !input.suppressCurrentBranchActiveEvidence && !hasOnlyFooksSessionTaskDelta(input.worktree)) {
     evidenceKinds.push("branch");
     activeParts.push(`branch ${reportToken(input.worktree.branch) ?? "non-main"}`);
   }
@@ -1519,11 +1536,74 @@ function readPostMergeMainCiEvidence(cwd: string, options: OperatorActivityOptio
   };
 }
 
+
+function readMergedBranchResidueEvidence(
+  cwd: string,
+  worktree: OperatorActivityWorktree,
+  options: OperatorActivityOptions,
+): OperatorActivityMergedBranchResidueEvidence {
+  const branch = worktree.branch;
+  const base: Pick<OperatorActivityMergedBranchResidueEvidence, "source" | "claimBoundary" | "readOnly" | "branch"> = {
+    source: OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_SOURCE,
+    claimBoundary: OPERATOR_ACTIVITY_MERGED_BRANCH_RESIDUE_CLAIM_BOUNDARY,
+    readOnly: true,
+    branch,
+  };
+  if (!branch || branch === "main") {
+    return {
+      ...base,
+      available: true,
+      mergedIntoOriginMain: false,
+      suppressesCurrentBranchActiveEvidence: false,
+      reason: branch === "main" ? "current branch is main" : "current branch is unknown",
+      blockers: [],
+    };
+  }
+  const cleanMergedResidueCandidate = worktree.clean === true;
+  if (!cleanMergedResidueCandidate) {
+    return {
+      ...base,
+      available: true,
+      mergedIntoOriginMain: false,
+      suppressesCurrentBranchActiveEvidence: false,
+      reason: "current branch is not clean; preserve as active or review-worthy evidence",
+      blockers: [],
+    };
+  }
+  const runner = options.commandRunner ?? defaultOperatorActivityCommandRunner;
+  try {
+    const output = runner("git", ["branch", "--merged", "origin/main"], cwd, DEFAULT_OPERATOR_ACTIVITY_TIMEOUT_MS);
+    const mergedBranches = new Set(output.split(/\r?\n/u).map((line) => line.replace(/^\*\s*/u, "").trim()).filter(Boolean));
+    const mergedIntoOriginMain = mergedBranches.has(branch);
+    return {
+      ...base,
+      available: true,
+      mergedIntoOriginMain,
+      suppressesCurrentBranchActiveEvidence: mergedIntoOriginMain,
+      reason: mergedIntoOriginMain
+        ? "current clean branch is already merged into local origin/main; treat as stale merged-branch residue, not active development"
+        : "current clean branch is not listed as merged into local origin/main",
+      blockers: [],
+    };
+  } catch (error) {
+    return {
+      ...base,
+      available: false,
+      mergedIntoOriginMain: false,
+      suppressesCurrentBranchActiveEvidence: false,
+      reason: "merged-branch residue evidence unavailable; preserve existing conservative branch evidence",
+      blockers: [`git merged-branch residue evidence unavailable: ${errorDetail(error)}`],
+    };
+  }
+}
+
 function buildCurrentRunEvidence(
+  cwd: string,
   worktree: OperatorActivityWorktree,
   tmux: OperatorActivityTmux,
   optionalCounts: OperatorActivityRemoteCounts,
   legacyWorktreeEvidence: OperatorActivityLegacyWorktreeEvidence,
+  options: OperatorActivityOptions,
 ): OperatorActivityCurrentRunEvidence {
   const blockers: string[] = [];
   const reasons: string[] = [];
@@ -1543,6 +1623,8 @@ function buildCurrentRunEvidence(
   const advisoryPlanningEpicPlusSingleChild = hasPlanningEpicPlusSingleChildOpenIssue(optionalCounts);
   const advisoryIssueInventory = advisoryPlanningEpicOnly || advisoryPlanningEpicPlusSingleChild;
   const remoteCountsIdle = zeroRemoteCounts || advisoryIssueInventory;
+  const mergedBranchResidueEvidence = readMergedBranchResidueEvidence(cwd, worktree, options);
+  const suppressCurrentBranchActiveEvidence = mergedBranchResidueEvidence.suppressesCurrentBranchActiveEvidence;
 
   if (!optionalCounts.enabled) {
     blockers.push("remote issue/PR counts disabled; pass --include-remote-counts to prove zero open issue/PR reminder evidence");
@@ -1574,14 +1656,19 @@ function buildCurrentRunEvidence(
     reasons.push("legacy closed-artifact worktree evidence is separated from active current-run evidence");
   }
 
-  const mainEchoEvidence = blockers.length === 0 && onMain && clean && noLocalDivergence && noSessions && remoteCountsIdle;
+  if (suppressCurrentBranchActiveEvidence) {
+    reasons.push("current branch is clean merged residue and is separated from active current-run evidence");
+  }
+
+  const mainEchoEvidence = blockers.length === 0 && (onMain || suppressCurrentBranchActiveEvidence) && clean && (noLocalDivergence || suppressCurrentBranchActiveEvidence) && noSessions && remoteCountsIdle;
   const activeWorkEvidence =
-    (Boolean(worktree.branch) && worktree.branch !== "main" && !hasOnlyFooksSessionTaskDelta(worktree)) ||
+    (Boolean(worktree.branch) && worktree.branch !== "main" && !suppressCurrentBranchActiveEvidence && !hasOnlyFooksSessionTaskDelta(worktree)) ||
     (worktree.clean === false && !hasOnlyFooksSessionTaskDelta(worktree)) ||
     fooksSessionCount > 0 ||
     (optionalCounts.enabled && (((openIssues ?? 0) > 0 && !advisoryIssueInventory) || (openPullRequests ?? 0) > 0));
   const receipt = buildCurrentRunReceipt({
     worktree,
+    suppressCurrentBranchActiveEvidence,
     fooksSessionCount,
     openIssues,
     openPullRequests,
@@ -1597,6 +1684,7 @@ function buildCurrentRunEvidence(
     classification: mainEchoEvidence ? "mainEchoNonActive" : "activeOrUnknown",
     mainEchoEvidence,
     activeWorkEvidence,
+    mergedBranchResidueEvidence,
     remoteCountsRequired: true,
     evidence: {
       branch: worktree.branch,
@@ -1667,7 +1755,7 @@ export function readOperatorActivitySnapshot(cwd = process.cwd(), options: Opera
   const optionalCounts = timeDiagnosticPhase(timingPhases, "read-remote-counts", () => readRemoteCounts(cwd, options));
   const legacyWorktreeEvidence = timeDiagnosticPhase(timingPhases, "read-legacy-worktree-evidence", () => readLegacyWorktreeEvidence(cwd, options, generatedAt));
   const stagedOmxPromptEvidence = timeDiagnosticPhase(timingPhases, "build-staged-omx-prompt-evidence", () => buildStagedOmxPromptEvidence(worktree, tmux));
-  const currentRunEvidence = timeDiagnosticPhase(timingPhases, "build-current-run-evidence", () => buildCurrentRunEvidence(worktree, tmux, optionalCounts, legacyWorktreeEvidence));
+  const currentRunEvidence = timeDiagnosticPhase(timingPhases, "build-current-run-evidence", () => buildCurrentRunEvidence(cwd, worktree, tmux, optionalCounts, legacyWorktreeEvidence, options));
   const postMergeMainCiEvidence = timeDiagnosticPhase(timingPhases, "read-post-merge-main-ci-evidence", () => readPostMergeMainCiEvidence(cwd, options));
   const operatorStatusCues = timeDiagnosticPhase(timingPhases, "build-operator-status-cues", () => ({
     remoteCountsRequiredNextAction: buildRemoteCountsRequiredNextActionCue(currentRunEvidence, optionalCounts),

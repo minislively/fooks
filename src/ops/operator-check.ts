@@ -2233,7 +2233,8 @@ function buildCleanIdleNudgeHandoffBoundary(
   const openIssueCount = activity.currentRunEvidence.evidence.openIssues;
   const openPullRequestCount = activity.currentRunEvidence.evidence.openPullRequests;
   const mappedFooksTmuxSessionCount = activity.currentRunEvidence.evidence.fooksSessionCount;
-  const liveNonMainWorktreePresent = Boolean(activity.worktree.branch && activity.worktree.branch !== "main")
+  const currentBranchSuppressesActiveEvidence = activity.currentRunEvidence.mergedBranchResidueEvidence.suppressesCurrentBranchActiveEvidence;
+  const liveNonMainWorktreePresent = Boolean(activity.worktree.branch && activity.worktree.branch !== "main" && !currentBranchSuppressesActiveEvidence)
     || receipts.some((receipt) => receipt.kind === "worktree" && receipt.classification === "active");
   const explicitHandoffArtifactPresent = Boolean(
     (typeof openIssueCount === "number" && openIssueCount > 0)
@@ -2301,7 +2302,8 @@ function buildHandoffArtifactEvidence(
   const liveMappedFooksTmuxSessionCount = activity.tmux.sessions.filter((session) =>
     session.status !== "staleRuntimeCandidate" && session.status !== "stagedPromptOnly" && session.status !== "ancestorMaintenance"
   ).length;
-  const liveNonMainWorktreePresent = Boolean(activity.worktree.branch && activity.worktree.branch !== "main");
+  const currentBranchSuppressesActiveEvidence = activity.currentRunEvidence.mergedBranchResidueEvidence.suppressesCurrentBranchActiveEvidence;
+  const liveNonMainWorktreePresent = Boolean(activity.worktree.branch && activity.worktree.branch !== "main" && !currentBranchSuppressesActiveEvidence);
   const activeReceiptCount = receipts.filter((receipt) => receipt.classification === "active").length;
   const adoptedLiveArtifactPresent = Boolean(
     (typeof openIssueCount === "number" && openIssueCount > 0)
