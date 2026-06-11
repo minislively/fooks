@@ -1507,6 +1507,56 @@ test("operator activity marks clean current main with zero counts and no session
   assert.deepEqual(snapshot.currentRunEvidence.blockers, []);
 });
 
+test("operator activity surfaces degraded opt-in remote counts for locally idle main", () => {
+  const tempDir = makeTempProject();
+  const snapshot = readOperatorActivitySnapshot(tempDir, {
+    includeRemoteCounts: true,
+    now: () => "2026-05-27T14:10:00.000Z",
+    runner: () => "",
+    gitRunner: (_cwd, args) => {
+      if (args[0] === "symbolic-ref") return "main\n";
+      if (args[0] === "rev-parse") return "origin/main\n";
+      if (args[0] === "rev-list") return "0\t0\n";
+      throw new Error(`unexpected git ${args.join(" ")}`);
+    },
+    commandRunner: (command, args) => {
+      const joined = args.join(" ");
+      if (command === "tmux") return "";
+      if (command === "gh" && args[0] === "issue") throw new Error("API rate limit exceeded for user");
+      if (command === "gh" && args[0] === "pr") throw new Error("API rate limit exceeded for user");
+      if (command === "gh" && args[0] === "run") return "[]";
+      if (command === "git" && joined === "worktree list --porcelain") {
+        return [`worktree ${tempDir}`, "HEAD degraded-main-head", "branch refs/heads/main", ""].join("\n");
+      }
+      if (command === "git" && joined === "rev-parse --verify origin/main") return "degraded-main-head\n";
+      if (command === "git" && joined === "branch --format=%(refname:short)") return "main\n";
+      if (command === "git" && joined === "branch --merged origin/main") return "main\n";
+      throw new Error(`unexpected command ${command} ${joined}`);
+    },
+    pathExists: (targetPath) => targetPath === tempDir,
+  });
+
+  assert.equal(snapshot.optionalCounts.enabled, true);
+  assert.equal(snapshot.optionalCounts.openIssues, undefined);
+  assert.equal(snapshot.optionalCounts.openPullRequests, undefined);
+  assert.match(snapshot.optionalCounts.blockers.join("\n"), /rate limit exceeded/);
+  assert.equal(snapshot.currentRunEvidence.available, false);
+  assert.equal(snapshot.currentRunEvidence.receipt.status, "idle");
+  assert.match(snapshot.currentRunEvidence.receipt.oneLine, /remote issue\/PR counts unavailable; remote idle unproven/);
+  assert.match(snapshot.currentRunEvidence.blockers.join("\n"), /remote issue\/PR counts unavailable/);
+
+  const cue = snapshot.operatorStatusCues.remoteCountsRequiredNextAction;
+  assert.equal(cue.visible, true);
+  assert.equal(cue.classification, "remote-counts-degraded");
+  assert.equal(cue.remoteCountsRequired, true);
+  assert.match(cue.currentEvidenceCue, /remote issue\/PR counts were requested but are unavailable/);
+  assert.match(cue.currentEvidenceCue, /rate limit exceeded/);
+  assert.match(cue.currentEvidenceCue, /remote idle state is unproven/);
+  assert.match(cue.nextAction, /Do not treat this idle receipt as proven remote idle/);
+  assert.match(cue.nextAction, /Retry after GitHub API rate limit\/auth availability recovers/);
+  assert.match(cue.oneLine, /Remote counts required/);
+});
+
 test("operator activity current-run receipt names dirty delta as active dogfood evidence", () => {
   const tempDir = makeTempProject();
   const snapshot = readOperatorActivitySnapshot(tempDir, {

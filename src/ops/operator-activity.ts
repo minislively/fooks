@@ -236,7 +236,7 @@ export type OperatorActivityRemoteCountsRequiredNextActionCue = {
   readOnly: true;
   advisoryOnly: true;
   visible: boolean;
-  classification: "remote-counts-required" | "not-required";
+  classification: "remote-counts-required" | "remote-counts-degraded" | "not-required";
   remoteCountsRequired: boolean;
   activeDevelopmentEvidence: false;
   currentEvidenceCue: string;
@@ -724,6 +724,7 @@ function buildCurrentRunReceipt(input: {
   mainEchoEvidence: boolean;
   advisoryPlanningEpicOnly: boolean;
   advisoryPlanningEpicPlusSingleChild: boolean;
+  remoteCountsUnavailable: boolean;
 }): OperatorActivityCurrentRunReceipt {
   const evidenceKinds: OperatorActivityCurrentRunReceipt["evidenceKinds"] = [];
   const activeParts: string[] = [];
@@ -757,6 +758,7 @@ function buildCurrentRunReceipt(input: {
   if (input.worktree.ahead === 0 && input.worktree.behind === 0) idleParts.push("zero divergence");
   if (input.fooksSessionCount === 0) idleParts.push("no mapped fooks sessions");
   if (input.openIssues === 0 && input.openPullRequests === 0) idleParts.push("zero open issues/PRs");
+  if (input.remoteCountsUnavailable) idleParts.push("remote issue/PR counts unavailable; remote idle unproven");
   if (input.advisoryPlanningEpicOnly) idleParts.push("only planning epic #960 is open");
   if (input.advisoryPlanningEpicPlusSingleChild) idleParts.push("planning epic #960 plus one idle child issue only");
   if (input.worktree.clean === false && hasOnlyFooksSessionTaskDelta(input.worktree)) {
@@ -1588,6 +1590,7 @@ function buildCurrentRunEvidence(
     mainEchoEvidence,
     advisoryPlanningEpicOnly,
     advisoryPlanningEpicPlusSingleChild,
+    remoteCountsUnavailable: optionalCounts.enabled && !remoteCountsAvailable,
   });
 
   return {
@@ -1625,15 +1628,26 @@ function buildRemoteCountsRequiredNextActionCue(
     && currentRunEvidence.evidence.ahead === 0
     && currentRunEvidence.evidence.behind === 0
     && currentRunEvidence.evidence.fooksSessionCount === 0;
-  const remoteCountsRequired = !optionalCounts.enabled && locallyIdleMain;
-  const currentEvidenceCue = remoteCountsRequired
+  const remoteCountsUnavailable = optionalCounts.enabled
+    && (optionalCounts.openIssues === undefined || optionalCounts.openPullRequests === undefined);
+  const remoteCountsRequired = locallyIdleMain && (!optionalCounts.enabled || remoteCountsUnavailable);
+  const currentEvidenceCue = !optionalCounts.enabled && remoteCountsRequired
     ? "local snapshot is clean main with zero divergence and no mapped fooks session; remote issue/PR counts are disabled, so remote idle state is unproven"
-    : optionalCounts.enabled
-      ? "remote issue/PR counts were explicitly requested; use operator-check-derived status cues for next-child evidence"
-      : "local active or unknown evidence means remote-counts-required idle guidance is not the current cue";
-  const nextAction = remoteCountsRequired
+    : remoteCountsUnavailable
+      ? remoteCountsRequired
+        ? `local snapshot is clean main with zero divergence and no mapped fooks session; remote issue/PR counts were requested but are unavailable (${optionalCounts.blockers.join("; ") || "no remote count detail"}), so remote idle state is unproven`
+        : `remote issue/PR counts were requested but are unavailable (${optionalCounts.blockers.join("; ") || "no remote count detail"}); local active or unknown evidence means degraded idle guidance is not the current cue`
+      : optionalCounts.enabled
+        ? "remote issue/PR counts were explicitly requested and resolved; use operator-check-derived status cues for next-child evidence"
+        : "local active or unknown evidence means remote-counts-required idle guidance is not the current cue";
+  const nextAction = !optionalCounts.enabled && remoteCountsRequired
     ? "Run fooks status activity --include-remote-counts --json or fooks check --json before treating the remote idle state as proven; concrete child issue/PR/branch/session/worktree-process/blocker evidence remains the active-work path. If source-of-truth remote counts are zero, clean main with zero divergence and no mapped fooks session is reported as clean idle without historical issue-specific closeout wording."
-    : "No default remote-counts-required next action is visible for this snapshot.";
+    : remoteCountsUnavailable && remoteCountsRequired
+      ? "Do not treat this idle receipt as proven remote idle: GitHub issue/PR counts were requested but degraded. Retry after GitHub API rate limit/auth availability recovers, or use concrete child issue/PR/branch/session/worktree-process/blocker evidence before starting active work."
+      : "No default remote-counts-required next action is visible for this snapshot.";
+  const classification = remoteCountsRequired
+    ? (remoteCountsUnavailable ? "remote-counts-degraded" : "remote-counts-required")
+    : "not-required";
 
   return {
     schemaVersion: OPERATOR_ACTIVITY_SCHEMA_VERSION,
@@ -1644,7 +1658,7 @@ function buildRemoteCountsRequiredNextActionCue(
     readOnly: true,
     advisoryOnly: true,
     visible: remoteCountsRequired,
-    classification: remoteCountsRequired ? "remote-counts-required" : "not-required",
+    classification,
     remoteCountsRequired,
     activeDevelopmentEvidence: false,
     currentEvidenceCue,
